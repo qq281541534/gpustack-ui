@@ -77,7 +77,7 @@ export default defineConfig({
   antd: {
     style: 'less'
   },
-  title: 'GPUStack',
+  title: 'LLM部署平台',
   hash: true,
   access: {},
   model: {},

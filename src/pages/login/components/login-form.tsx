@@ -103,11 +103,18 @@ const LoginForm = () => {
           <span className="text">
             {intl?.formatMessage({ id: 'users.login.title' })}
           </span>
-          <img
-            src={LogoIcon}
-            alt="logo"
-            style={{ height: '36px', marginLeft: 10 }}
-          />
+          <span
+            style={{
+              fontSize: '24px',
+              fontWeight: 'bold',
+              marginLeft: 10,
+              background: 'linear-gradient(90deg, #1677ff, #722ed1)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}
+          >
+            LLM部署平台
+          </span>
         </div>
       </div>
     );

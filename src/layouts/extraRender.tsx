@@ -260,39 +260,6 @@ export const ExtraContent = (props: { isDarkTheme?: boolean }) => {
     <Wrapper>
       {contextHolder}
       <PluginExtraField name="OrgSwitcher" isDarkTheme={isDarkTheme} />
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center'
-        }}
-      >
-        <Button
-          type="text"
-          size="small"
-          onClick={showVersion}
-          style={{
-            color: 'var(--ant-color-text-tertiary)'
-          }}
-        >
-          {version.version}
-        </Button>
-        {showUpgrade && (
-          <NewLabel>
-            <span className="text">
-              {intl.formatMessage({ id: 'common.text.new' })}
-            </span>
-          </NewLabel>
-        )}
-      </div>
-      <DropdownActions menu={{ ...helpMenu }} popupRender={helpPopupRender}>
-        <IconWrapper>
-          <IconFont
-            type="icon-help"
-            className="font-size-20"
-            style={{ color: 'var(--ant-color-text-tertiary)' }}
-          />
-        </IconWrapper>
-      </DropdownActions>
       <PluginExtraField name="GlobalSettings" />
       <DropdownActions menu={{ ...userMenu }} popupRender={userPopupRender}>
         <IconWrapper>
