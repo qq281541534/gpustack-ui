@@ -29,7 +29,7 @@ export default {
   'menu.login': '登录',
   'menu.usage': '使用量',
   'menu.usage.usage': '使用量',
-  'menu.billingAndUsage': '用量与计费',
+  'menu.billingAndUsage': '用量',
   'menu.billingAndUsage.usage': '用量统计',
   'menu.billingAndUsage.billing': '计费',
   'menu.404': '404',

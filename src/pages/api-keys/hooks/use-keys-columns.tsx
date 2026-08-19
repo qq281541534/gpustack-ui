@@ -1,17 +1,15 @@
 // columns.ts
 import { tableSorter } from '@/config/settings';
 import { usePluginListColumns } from '@/plugins/list-extra-columns';
-import { DashboardOutlined } from '@ant-design/icons';
 import {
   AutoTooltip,
   DropdownButtons,
-  IconFont,
   icons,
   TextAttribute,
   ThemeTag
 } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
-import { MenuProps, Tooltip } from 'antd';
+import { MenuProps } from 'antd';
 import { ColumnsType } from 'antd/lib/table';
 import dayjs from 'dayjs';
 import { useMemo } from 'react';
@@ -19,11 +17,7 @@ import { ListItem } from '../config/types';
 import type { APIKeyConfigAction } from '../plugin';
 
 type APIKeyAction = Omit<Global.ActionItem<ListItem>, 'disabled' | 'label'> & {
-  // Per-row callback (function) is the host's default; placeholders use a
-  // plain boolean to render the menu item grayed out unconditionally.
   disabled?: boolean | ((record: ListItem) => boolean);
-  // ReactNode allowed so disabled placeholders can render a Tooltip-
-  // wrapped label (paired with `locale: false`).
   label: string | React.ReactNode;
   onClick?: (record: ListItem) => void;
 };
@@ -84,45 +78,7 @@ const useModelsColumns = ({
       onClick: (record: ListItem) => onConfigAction?.(a.key, record)
     }));
 
-    // Show disabled placeholders for IP Access Control / Quota Limit in
-    // the OSS build only — when the enterprise plugin contributes the
-    // real entry under the same key, skip the placeholder so the live
-    // action takes over. Keeps the dropdown's surface area consistent
-    // between editions while making the upgrade path discoverable.
-    const pluginKeys = new Set(configActions.map((a) => a.key));
-    const enterpriseTooltip = intl.formatMessage({
-      id: 'common.enterprise.feature'
-    });
-    const enterprisePlaceholder = (labelId: string): React.ReactNode => (
-      <Tooltip title={enterpriseTooltip} placement="left">
-        <span style={{ display: 'inline-block' }}>
-          {intl.formatMessage({ id: labelId })}
-        </span>
-      </Tooltip>
-    );
-    const placeholders: RankedAction[] = [];
-    if (!pluginKeys.has('ipConfig')) {
-      placeholders.push({
-        key: 'ipConfig',
-        label: enterprisePlaceholder('apikeys.button.ipConfig'),
-        locale: false,
-        icon: <IconFont type="icon-safe-ip" />,
-        disabled: true,
-        priority: 12
-      });
-    }
-    if (!pluginKeys.has('quotaLimit')) {
-      placeholders.push({
-        key: 'quotaLimit',
-        label: enterprisePlaceholder('quotaLimits.button.title'),
-        locale: false,
-        icon: <DashboardOutlined />,
-        disabled: true,
-        priority: 14
-      });
-    }
-
-    return [...builtIns, ...fromPlugins, ...placeholders].sort(
+    return [...builtIns, ...fromPlugins].sort(
       (a, b) => a.priority - b.priority
     );
   }, [intl, configActions, onConfigAction]);

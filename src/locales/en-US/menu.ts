@@ -36,7 +36,7 @@ export default {
   'menu.login': 'Login',
   'menu.usage': 'Usage',
   'menu.usage.usage': 'Usage',
-  'menu.billingAndUsage': 'Usage & Billing',
+  'menu.billingAndUsage': 'Usage',
   'menu.billingAndUsage.usage': 'Usage',
   'menu.billingAndUsage.billing': 'Billing',
   'menu.404': '404',

@@ -27,7 +27,7 @@ export default {
   'menu.login': 'Авторизация',
   'menu.usage': 'Использование',
   'menu.usage.usage': 'Использование',
-  'menu.billingAndUsage': 'Использование и биллинг',
+  'menu.billingAndUsage': 'Использование',
   'menu.billingAndUsage.usage': 'Использование',
   'menu.billingAndUsage.billing': 'Биллинг',
   'menu.404': 'Ошибка 404',
