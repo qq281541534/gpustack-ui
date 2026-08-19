@@ -1,15 +1,33 @@
 import { exportJsonToExcel } from '@gpustack/core-ui/excel';
+import { useIntl } from '@umijs/max';
 import dayjs from 'dayjs';
-import { useEffect, useMemo, useState } from 'react';
+import _ from 'lodash';
+import { useEffect, useRef, useState } from 'react';
 import { GroupOption } from '../config';
 import { BreakdownItem, UsageFilterItem } from '../config/types';
 import useQueryTimeSeriesData from '../services/use-query-timeseries-data';
+import { withDeletedMark } from '../utils/deleted-label';
+
+// group dimension → the id field inside ``identity.current`` (null for deleted
+// entities on the Tokens tab, so the marker degrades to just "[Deleted]").
+const GROUP_ID_KEY: Record<
+  string,
+  'route_id' | 'user_id' | 'api_key_id' | 'organization_id'
+> = {
+  route: 'route_id',
+  user: 'user_id',
+  api_key: 'api_key_id',
+  organization: 'organization_id'
+};
 
 const DefaultDateConfig = {
   defaultRange: 29
 };
 
 type UserOptionType = UsageFilterItem & {
+  value: string;
+};
+type RouteOptionType = UsageFilterItem & {
   value: string;
 };
 type ValueType = string | number | null;
@@ -23,6 +41,9 @@ interface UseUsageFiltersParams {
     models?: GroupOptionType[];
     users?: UserOptionType[];
     api_keys?: GroupOptionType[];
+    routes?: RouteOptionType[];
+    organizations?: RouteOptionType[];
+    user_groups?: RouteOptionType[];
   };
   chartFilters: {
     metric: string;
@@ -30,7 +51,7 @@ interface UseUsageFiltersParams {
     granularity: string;
   };
   initialState?: {
-    activeModels?: ValueType[][];
+    activeRoutes?: string[];
     activeApiKeys?: ValueType[][];
     users?: string[];
     start_date?: string;
@@ -45,15 +66,19 @@ interface UseUsageFiltersParams {
   onFetchData?: (params: {
     chartFilters: UseUsageFiltersParams['chartFilters'];
     filters: {
-      models?: FilterOptionType[];
+      routes?: FilterOptionType[];
       users?: FilterOptionType[];
       api_keys?: FilterOptionType[];
+      organizations?: FilterOptionType[];
+      user_groups?: FilterOptionType[];
     };
     commonFilters: {
       scope: string;
-      models: string[];
+      routes: string[];
       users: string[];
       api_keys: string[];
+      organizations: string[];
+      user_groups: string[];
       start_date: string;
       end_date: string;
     };
@@ -69,8 +94,9 @@ export const useUsageFilters = ({
   autoFetchOnFilterChange = true,
   onFetchData
 }: UseUsageFiltersParams) => {
+  const intl = useIntl();
   const {
-    activeModels: initialActiveModels = [],
+    activeRoutes: initialActiveRoutes = [],
     activeApiKeys: initialActiveApiKeys = [],
     users: initialUsers = [],
     start_date = '',
@@ -93,9 +119,11 @@ export const useUsageFilters = ({
 
   const [commonFilters, setCommonFilters] = useState({
     scope: initialScope,
-    models: extractSelectedValues(initialActiveModels),
+    routes: initialActiveRoutes,
     users: initialUsers || [],
     api_keys: extractSelectedValues(initialActiveApiKeys),
+    organizations: [] as string[],
+    user_groups: [] as string[],
     start_date:
       start_date ||
       dayjs()
@@ -104,11 +132,11 @@ export const useUsageFilters = ({
     end_date: end_date || dayjs().format('YYYY-MM-DD')
   });
 
-  const modelOptions = metaData?.models || [];
+  const routeOptions = metaData?.routes || [];
   const userOptions = metaData?.users || [];
   const apiKeyOptions = metaData?.api_keys || [];
-  const [activeModels, setActiveModels] =
-    useState<ValueType[][]>(initialActiveModels);
+  const organizationOptions = metaData?.organizations || [];
+  const userGroupOptions = metaData?.user_groups || [];
   const [activeApiKeys, setActiveApiKeys] =
     useState<ValueType[][]>(initialActiveApiKeys);
 
@@ -117,12 +145,11 @@ export const useUsageFilters = ({
       return;
     }
 
-    setActiveModels(initialActiveModels);
     setActiveApiKeys(initialActiveApiKeys);
     setCommonFilters((prev) => ({
       ...prev,
       scope: initialScope,
-      models: extractSelectedValues(initialActiveModels),
+      routes: initialActiveRoutes,
       users: initialUsers || [],
       api_keys: extractSelectedValues(initialActiveApiKeys),
       start_date:
@@ -135,7 +162,7 @@ export const useUsageFilters = ({
   }, [
     end_date,
     initialActiveApiKeys,
-    initialActiveModels,
+    initialActiveRoutes,
     initialUsers,
     initialScope,
     initialState,
@@ -144,17 +171,17 @@ export const useUsageFilters = ({
 
   const buildFilters = (selected: typeof commonFilters) => {
     const filters: {
-      models?: FilterOptionType[];
+      routes?: FilterOptionType[];
       users?: FilterOptionType[];
       api_keys?: FilterOptionType[];
+      organizations?: FilterOptionType[];
+      user_groups?: FilterOptionType[];
     } = {};
 
-    if (selected.models.length > 0) {
-      const modelsSet = new Set(selected.models);
-      filters.models = modelOptions
-        .flatMap((group) =>
-          group.children.filter((item) => modelsSet.has(item.value))
-        )
+    if (selected.routes.length > 0) {
+      const routesSet = new Set(selected.routes);
+      filters.routes = routeOptions
+        .filter((item) => routesSet.has(item.value))
         .map((item) => ({
           identity: item.identity
         }));
@@ -179,13 +206,38 @@ export const useUsageFilters = ({
         }));
     }
 
+    if (selected.organizations.length > 0) {
+      const orgSet = new Set(selected.organizations);
+      filters.organizations = organizationOptions
+        .filter((item) => orgSet.has(item.value))
+        .map((item) => ({
+          identity: item.identity
+        }));
+    }
+
+    if (selected.user_groups.length > 0) {
+      const groupSet = new Set(selected.user_groups);
+      filters.user_groups = userGroupOptions
+        .filter((item) => groupSet.has(item.value))
+        .map((item) => ({
+          identity: item.identity
+        }));
+    }
+
     return filters;
   };
 
-  const filters = useMemo(
-    () => buildFilters(commonFilters),
-    [commonFilters, modelOptions, userOptions, apiKeyOptions]
-  );
+  // Keep a stable reference while the content is unchanged. ``buildFilters``
+  // returns a fresh object every render — and again when the meta options
+  // resolve after mount — which would otherwise retrigger every breakdown
+  // table's fetch effect a second time on first load. Only a real selection
+  // change (or options resolving a previously-selected id) should swap it.
+  const filtersRef = useRef<ReturnType<typeof buildFilters>>({});
+  const nextFilters = buildFilters(commonFilters);
+  if (!_.isEqual(nextFilters, filtersRef.current)) {
+    filtersRef.current = nextFilters;
+  }
+  const filters = filtersRef.current;
 
   const fetchData = (
     currentSelectedFilters = commonFilters,
@@ -209,6 +261,17 @@ export const useUsageFilters = ({
     fetchTimeSeriesData({
       ...currentChartFilters,
       group_by: groupByArray,
+      // The trend chart needs the complete date series. ``page: -1`` is the
+      // backend's no-pagination sentinel — without it the default page (20
+      // buckets, sorted by total tokens) drops low-traffic dates, leaving
+      // gaps in the chart for ranges spanning more than a handful of buckets.
+      page: -1,
+      // Without ``scope`` the backend defaults to ``all``, while the
+      // breakdown tables pass ``scope`` explicitly. The mismatch makes
+      // the chart and the tables run different filters on the same
+      // page — an Org owner viewing a cross-Org-granted model sees the
+      // chart empty while the tables render the same usage.
+      scope: currentSelectedFilters.scope,
       start_date: currentSelectedFilters.start_date,
       end_date: currentSelectedFilters.end_date,
       filters: nextFilters
@@ -233,16 +296,12 @@ export const useUsageFilters = ({
     }
   };
 
-  const handleActiveModelsChange = (value: ValueType[][]) => {
-    setActiveModels(value);
-  };
-
   const handleActiveApiKeysChange = (value: ValueType[][]) => {
     setActiveApiKeys(value);
   };
 
   const handleFilterChange = (
-    type: 'models' | 'users' | 'api_keys',
+    type: 'routes' | 'users' | 'api_keys' | 'organizations' | 'user_groups',
     value: string[]
   ) => {
     const selectedValues: string[] = value.map((item) => {
@@ -267,19 +326,28 @@ export const useUsageFilters = ({
     const items = timeSeriesData?.items || [];
     const groupDim = chartFilters.group_by as
       | 'user'
-      | 'model'
+      | 'route'
       | 'api_key'
       | null;
     const metric = chartFilters.metric as keyof BreakdownItem;
 
     const dateMap: Record<string, Record<string, any>> = {};
     const groupLabels = new Set<string>();
+    const deletedWord = intl.formatMessage({ id: 'usage.table.deleted' });
 
     items.forEach((item) => {
       const date = item.date?.value;
       if (!date) return;
+      const groupEntity = groupDim
+        ? (item[groupDim] as UsageFilterItem)
+        : undefined;
       const groupLabel = groupDim
-        ? ((item[groupDim] as UsageFilterItem)?.label ?? '-')
+        ? withDeletedMark(
+            groupEntity?.label ?? '-',
+            groupEntity?.deleted,
+            deletedWord,
+            groupEntity?.identity?.current?.[GROUP_ID_KEY[groupDim]]
+          )
         : metric;
       groupLabels.add(groupLabel);
       if (!dateMap[date]) dateMap[date] = { date };
@@ -327,22 +395,28 @@ export const useUsageFilters = ({
     scope: commonFilters.scope,
     startDate: commonFilters.start_date,
     endDate: commonFilters.end_date,
-    selectedModels: commonFilters.models,
+    selectedRoutes: commonFilters.routes,
     selectedUsers: commonFilters.users,
     selectedApiKeys: commonFilters.api_keys,
-    modelOptions,
+    selectedOrganizations: commonFilters.organizations,
+    selectedUserGroups: commonFilters.user_groups,
+    routeOptions,
     userOptions,
     apiKeyOptions,
+    organizationOptions,
+    userGroupOptions,
     activeApiKeys,
-    activeModels,
     handleSearch,
-    handleActiveModelsChange,
     handleActiveApiKeysChange,
     onScopeChange: handleScopeChange,
     onDateChange: handleDateChange,
-    onModelsChange: (value: string[]) => handleFilterChange('models', value),
+    onRoutesChange: (value: string[]) => handleFilterChange('routes', value),
     onUsersChange: (value: string[]) => handleFilterChange('users', value),
     onApiKeysChange: (value: string[]) => handleFilterChange('api_keys', value),
+    onOrganizationsChange: (value: string[]) =>
+      handleFilterChange('organizations', value),
+    onUserGroupsChange: (value: string[]) =>
+      handleFilterChange('user_groups', value),
     onExportChart: handleOnExportChart
   };
 

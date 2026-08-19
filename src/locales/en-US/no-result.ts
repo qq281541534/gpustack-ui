@@ -36,9 +36,12 @@ export default {
   'noresult.catalog.nofound': 'No matching models found.',
   'noresult.resources.cluster':
     'No clusters available. Add a cluster to get started.',
+  'noresult.resources.k8sCluster':
+    'No clusters available. Add a Kubernetes cluster to get started.',
   'noresult.resources.worker':
     'No workers available. Add a worker to get started.',
   'noresult.resources.gotocluster': 'Create Your First Cluster',
+  'noresult.resources.addk8scluster': 'Add a Kubernetes Cluster',
   'noresult.resources.gotoworker': 'Add Worker',
   'noresult.benchmark.title': 'No Benchmarks',
   'noresult.benchmark.subTitle': 'No benchmarks have been added yet.',
@@ -64,5 +67,13 @@ export default {
   'noresult.gpuservice.instance.nofound': 'No matching GPU instances found.',
   'noresult.gpuservice.storage.title': 'No Storage',
   'noresult.gpuservice.storage.subTitle': 'No storage has been added yet.',
-  'noresult.gpuservice.storage.nofound': 'No matching storage found.'
+  'noresult.gpuservice.storage.nofound': 'No matching storage found.',
+  'noresult.gpuservice.storageType.title': 'No Storage Types',
+  'noresult.gpuservice.storageType.subTitle':
+    'No storage types have been added yet.',
+  'noresult.gpuservice.storageType.nofound': 'No matching storage types found.',
+  'noresult.gpuservice.sshkey.title': 'No SSH Public Keys',
+  'noresult.gpuservice.sshkey.subTitle':
+    'No SSH public keys have been added yet.',
+  'noresult.gpuservice.sshkey.nofound': 'No matching SSH public keys found.'
 };

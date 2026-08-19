@@ -1,7 +1,7 @@
 import useCoolColors from '@/hooks/use-cool-colors';
 import BarChart from '@/pages/_components/bar-chart';
 import { BaseSelect, CardWrapper } from '@gpustack/core-ui';
-import { useIntl } from '@umijs/max';
+import { useAccess, useIntl } from '@umijs/max';
 import { Segmented } from 'antd';
 import dayjs from 'dayjs';
 import React, { useMemo } from 'react';
@@ -12,6 +12,15 @@ import {
   UsageBreakdownResponse,
   UsageFilterItem
 } from '../config/types';
+import { withDeletedMark } from '../utils/deleted-label';
+
+// group dimension → the id field inside ``identity.current`` (the backend nulls
+// it for deleted entities, so the marker falls back to just "[Deleted]").
+const GROUP_ID_KEY: Record<string, 'route_id' | 'user_id' | 'api_key_id'> = {
+  route: 'route_id',
+  user: 'user_id',
+  api_key: 'api_key_id'
+};
 
 const ControlsWrapper = styled.div`
   display: flex;
@@ -80,6 +89,12 @@ const DailyUsage: React.FC<DailyUsageProps> = (props) => {
     onGranularityChange
   } = props;
   const generateCoolColors = useCoolColors();
+  // ``canSeeOrgAdmin`` widens to Org owners of the selected Org
+  // (Personal Org excluded). Mirrors the BE's
+  // ``_can_use_all_scope`` gate for the per-user breakdown
+  // dimension.
+  const access = useAccess();
+  const canGroupByUser = !!access.canSeeOrgAdmin;
 
   const labelFormatter = (v: any) => {
     if (granularity === 'month') {
@@ -102,7 +117,7 @@ const DailyUsage: React.FC<DailyUsageProps> = (props) => {
       };
     }
 
-    const groupDim = groupBy as 'user' | 'model' | 'api_key' | null;
+    const groupDim = groupBy as 'user' | 'route' | 'api_key' | null;
     const isCached = metric === CACHED_METRIC;
 
     const dateSet = new Set<string>(
@@ -118,12 +133,22 @@ const DailyUsage: React.FC<DailyUsageProps> = (props) => {
       (a, b) => dayjs(a).valueOf() - dayjs(b).valueOf()
     );
 
+    const deletedWord = intl.formatMessage({ id: 'usage.table.deleted' });
+
     const groupOrder: string[] = [];
     const groupItemsMap = new Map<string, Map<string, BreakdownItem>>();
 
     items.forEach((item) => {
+      const groupEntity = groupDim
+        ? (item[groupDim] as UsageFilterItem)
+        : undefined;
       const groupLabel = groupDim
-        ? ((item[groupDim] as UsageFilterItem)?.label ?? '-')
+        ? withDeletedMark(
+            groupEntity?.label ?? '-',
+            groupEntity?.deleted,
+            deletedWord,
+            groupEntity?.identity?.current?.[GROUP_ID_KEY[groupDim]]
+          )
         : '__total__';
 
       if (!groupItemsMap.has(groupLabel)) {
@@ -245,6 +270,18 @@ const DailyUsage: React.FC<DailyUsageProps> = (props) => {
     onGroupByChange(value || null);
   };
 
+  const groupByOptionsFiltered = groupByOptions
+    .map((item) => ({
+      label: intl.formatMessage({ id: item.label }),
+      value: item.value
+    }))
+    .filter((option) => {
+      if (canGroupByUser) {
+        return true;
+      }
+      return option.value !== 'user';
+    });
+
   return (
     <div>
       <CardWrapper style={{ width: '100%', marginTop: 20 }}>
@@ -275,10 +312,7 @@ const DailyUsage: React.FC<DailyUsageProps> = (props) => {
                   {intl.formatMessage({ id: 'usage.filter.groupBy' })}
                 </ControlLabel>
               }
-              options={groupByOptions.map((item) => ({
-                label: intl.formatMessage({ id: item.label }),
-                value: item.value
-              }))}
+              options={groupByOptionsFiltered}
               value={groupBy}
               popupMatchSelectWidth={false}
               onChange={handleOnGroupByChange}
@@ -299,6 +333,9 @@ const DailyUsage: React.FC<DailyUsageProps> = (props) => {
           seriesData={seriesData}
           xAxisData={xAxisData}
           height={280}
+          grid={{
+            bottom: 28
+          }}
           legendData={legendData}
           labelFormatter={labelFormatter}
           legendIsolate={metric === CACHED_METRIC}

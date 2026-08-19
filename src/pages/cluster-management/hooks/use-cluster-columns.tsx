@@ -2,6 +2,7 @@
 import { systemConfigAtom } from '@/atoms/system';
 import { tableSorter } from '@/config/settings';
 import { getGPUStackPlugin } from '@/plugins';
+import { usePluginListColumns } from '@/plugins/list-extra-columns';
 import { StarFilled } from '@ant-design/icons';
 import {
   AutoTooltip,
@@ -12,7 +13,7 @@ import {
   type TableColumnProps as SealColumnProps
 } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
-import { Tooltip, Typography } from 'antd';
+import { Tooltip } from 'antd';
 import dayjs from 'dayjs';
 import { useAtomValue } from 'jotai';
 import { useMemo } from 'react';
@@ -23,15 +24,18 @@ import {
   ProviderValueMap
 } from '../config';
 import { ClusterListItem } from '../config/types';
+
 const clusterActionList = [
   {
     key: 'edit',
     label: 'common.button.edit',
+    order: 0,
     icon: icons.EditOutlined
   },
   {
     label: 'resources.metrics.details',
     key: 'metrics',
+    order: 10,
     icon: (
       <span className="flex-center">
         <GrafanaIcon style={{ width: 14, height: 14 }}></GrafanaIcon>
@@ -43,6 +47,7 @@ const clusterActionList = [
     label: 'resources.button.create',
     provider: ProviderValueMap.Docker,
     locale: true,
+    order: 20,
     icon: icons.DockerOutlined
   },
   {
@@ -50,6 +55,7 @@ const clusterActionList = [
     label: 'clusters.button.register',
     provider: ProviderValueMap.Kubernetes,
     locale: true,
+    order: 30,
     icon: icons.KubernetesOutlined
   },
   {
@@ -57,16 +63,20 @@ const clusterActionList = [
     label: 'clusters.button.addNodePool',
     provider: ProviderValueMap.DigitalOcean,
     locale: true,
+    order: 40,
     icon: icons.Catalog1
   },
   {
     key: 'isDefault',
     label: 'clusters.form.setDefault',
+    locale: true,
+    order: 50,
     icon: icons.StarOutlined
   },
   {
     key: 'delete',
     label: 'common.button.delete',
+    order: 999,
     icon: icons.DeleteOutlined,
     props: {
       danger: true
@@ -75,22 +85,21 @@ const clusterActionList = [
 ];
 
 const useClusterColumns = (
-  handleSelect: (val: string, record: ClusterListItem) => void,
-  onCellClick?: (record: ClusterListItem, dataIndex: string) => void
+  handleSelect: (val: string, record: ClusterListItem, item?: any) => void
 ): SealColumnProps[] => {
   const intl = useIntl();
   const systemConfig = useAtomValue(systemConfigAtom);
-  // The cluster-detail page is shipped in OSS source, but OSS keeps
-  // it unreachable from the cluster list — the link is only
-  // surfaced when a plugin opts in via
-  // `clusterDetail.linkableName`. Without a plugin we render the
-  // name as plain text (matches the pre-restore behaviour); with one
-  // we use Typography.Link wired to the parent's `onCellClick`.
-  const nameLinkable: boolean = !!getGPUStackPlugin()?.clusterDetail
-    ?.linkableName;
+  const pluginCols = usePluginListColumns('clusters');
+  // The cluster name is plain text: there is no cluster-detail page
+  // to route into. A plugin may still contribute extra row actions
+  // (topology, Cluster Access) via `clusterDetail.useGenerateActions`.
+  const { useGenerateActions } = getGPUStackPlugin()?.clusterDetail || {};
+
+  const actionList =
+    useGenerateActions?.({ actions: clusterActionList }) || clusterActionList;
 
   const setActionsItems = (row: ClusterListItem) => {
-    return clusterActionList.filter((item) => {
+    return actionList.filter((item: any) => {
       if (item.provider) {
         return item.provider === row.provider;
       }
@@ -102,6 +111,40 @@ const useClusterColumns = (
   };
 
   return useMemo(() => {
+    // Two prebuilt span maps for the 24-unit SealTable grid: one for
+    // the default layout, one for when a plugin contributes an extra
+    // column (currently always the 3-span Organization cell — wider
+    // would visually dominate this row of 2/3-span built-ins). Width
+    // absorbed comes from the columns whose content underfills its
+    // slot (single-digit `provider` / `models` / `status` tag), not
+    // from `created_at` (a full date string) or `workers` (the
+    // `x / y` digit pair reads better with breathing room). Picking
+    // by map rather than a `pluginSpan`-driven formula trades the
+    // formula's built-in handling of multi-column / variable-width
+    // plugins for readability and easier tweaks — the sole consumer
+    // today is one fixed-width column, so the formula's generality
+    // was unused.
+    const SPANS_DEFAULT = {
+      provider: 3,
+      deployments: 3,
+      workers: 3,
+      status: 3,
+      createTime: 4
+    };
+    const SPANS_WITH_PLUGIN = {
+      provider: 2,
+      deployments: 2,
+      workers: 3,
+      status: 2,
+      createTime: 4
+    };
+    const spans = pluginCols.length > 0 ? SPANS_WITH_PLUGIN : SPANS_DEFAULT;
+    const pluginRendered = pluginCols.map((c) => ({
+      title: intl.formatMessage({ id: c.titleId }),
+      dataIndex: c.key,
+      span: c.span ?? 4,
+      render: (_value: any, record: ClusterListItem) => c.render(record)
+    }));
     return [
       {
         title: intl.formatMessage({ id: 'common.table.name' }),
@@ -110,16 +153,8 @@ const useClusterColumns = (
         span: 3,
         render: (text: string, record: ClusterListItem) => (
           <>
-            <AutoTooltip ghost title={text}>
-              {nameLinkable ? (
-                <Typography.Link
-                  onClick={() => onCellClick?.(record, 'name')}
-                >
-                  {record.name}
-                </Typography.Link>
-              ) : (
-                <span className="text-primary">{record.name}</span>
-              )}
+            <AutoTooltip ghost title={text} minWidth={20}>
+              <span className="text-primary">{record.name}</span>
             </AutoTooltip>
             {record.is_default && (
               <Tooltip
@@ -135,11 +170,13 @@ const useClusterColumns = (
           </>
         )
       },
+      ...pluginRendered,
       {
         title: intl.formatMessage({ id: 'clusters.table.provider' }),
         dataIndex: 'provider',
         sorter: tableSorter(2),
-        span: 3,
+        span: spans.provider,
+        minWidth: 110,
         render: (value: string) => (
           <AutoTooltip ghost minWidth={20}>
             {ProviderLabelMap[value]}
@@ -147,9 +184,9 @@ const useClusterColumns = (
         )
       },
       {
-        title: 'GPUs',
+        title: intl.formatMessage({ id: 'dashboard.totalgpus' }),
         dataIndex: 'gpus',
-        span: 2,
+        width: 100,
         sorter: tableSorter(3),
         render: (value: number) => <span>{value}</span>
       },
@@ -157,14 +194,16 @@ const useClusterColumns = (
         title: intl.formatMessage({ id: 'clusters.table.deployments' }),
         dataIndex: 'models',
         sorter: tableSorter(4),
-        span: 3,
+        span: spans.deployments,
+        maxWidth: 150,
         render: (value: number) => <span>{value}</span>
       },
       {
         title: intl.formatMessage({ id: 'resources.nodes' }),
         dataIndex: 'workers',
+        minWidth: 100,
+        maxWidth: 120,
         sorter: tableSorter(5),
-        span: 3,
         render: (value: number, record: ClusterListItem) => (
           <span>
             {record.ready_workers} / {record.workers}
@@ -174,7 +213,9 @@ const useClusterColumns = (
       {
         title: intl.formatMessage({ id: 'common.table.status' }),
         dataIndex: 'state',
-        span: 3,
+        span: spans.status,
+        minWidth: 80,
+        align: 'center',
         render: (value: number, record: ClusterListItem) => (
           <StatusTag
             statusValue={{
@@ -189,7 +230,7 @@ const useClusterColumns = (
         title: intl.formatMessage({ id: 'common.table.createTime' }),
         dataIndex: 'created_at',
         sorter: tableSorter(6),
-        span: 4,
+        width: 180,
         render: (value: string) => (
           <AutoTooltip ghost minWidth={20}>
             {dayjs(value).format('YYYY-MM-DD HH:mm:ss')}
@@ -203,12 +244,14 @@ const useClusterColumns = (
         render: (value: string, record: ClusterListItem) => (
           <DropdownButtons
             items={setActionsItems(record)}
-            onSelect={(val) => handleSelect(val, record)}
+            onSelect={(val: string, item: any) =>
+              handleSelect(val, record, item)
+            }
           ></DropdownButtons>
         )
       }
     ];
-  }, [handleSelect, onCellClick]);
+  }, [handleSelect, intl, pluginCols]);
 };
 
 export default useClusterColumns;

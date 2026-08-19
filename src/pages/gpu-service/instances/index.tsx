@@ -1,81 +1,61 @@
-import { currentClusterAtom } from '@/atoms/gpuservice';
-import { getCurrentOrganizationId } from '@/atoms/user';
+import { clusterSessionAtom } from '@/atoms/clusters';
 import { PageAction } from '@/config';
 import { PaginationKey, TABLE_SORT_DIRECTIONS } from '@/config/settings';
-import type { PageActionType } from '@/config/types';
 import useTableFetch from '@/hooks/use-table-fetch';
 import { ProviderValueMap } from '@/pages/cluster-management/config';
 import { useQueryClusterList } from '@/pages/cluster-management/services/use-query-cluster-list';
+import { handleBatchRequest } from '@/utils';
+import { PlusOutlined } from '@ant-design/icons';
 import {
-  BaseSelect,
   DeleteModal,
+  DropdownButtons,
   FilterBar,
   IconFont,
   NoResult
 } from '@gpustack/core-ui';
-import { useIntl } from '@umijs/max';
+import { useAccess, useIntl, useNavigate } from '@umijs/max';
 import { useMemoizedFn } from 'ahooks';
-import { ConfigProvider, Divider, Flex, message, Table } from 'antd';
-import { useAtom } from 'jotai';
+import { Button, ConfigProvider, message, Modal, Space, Table } from 'antd';
+import { useSetAtom } from 'jotai';
 import _ from 'lodash';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { PageContainerInner } from '../../_components/page-box';
+import { useEffect, useMemo, useState } from 'react';
+import PageBox from '../../_components/page-box';
+import { queryGPUServiceStorage } from '../storage/apis';
 import {
   deleteGPUServiceInstance,
   GPU_SERVICE_INSTANCES_API,
-  queryGPUServiceInstances
+  queryGPUServiceInstances,
+  startGPUServiceInstance,
+  stopGPUServiceInstance
 } from './apis';
 import AddModal from './components/add-modal';
+import ViewEventsModal from './components/view-events-modal';
+import ViewLogsModal from './components/view-logs-modal';
+import { batchActionList } from './config';
 import { FormData, ListItem } from './config/types';
+import useCreateInstance from './hooks/use-create-instance';
 import useInstancesColumns from './hooks/use-instances-columns';
-import useCreateInstance from './services/use-create-instance';
+import useViewEvents from './hooks/use-view-events';
+import useViewLogs from './hooks/use-view-logs';
+import useCreateInstanceRequest from './services/use-create-instance';
 import useUpdateInstance from './services/use-update-instance';
 
 const GPUService: React.FC = () => {
   const intl = useIntl();
-  const namespace = getCurrentOrganizationId();
-  const [currentCluster, setCurrentCluster] = useAtom(currentClusterAtom);
-  const clusterID = currentCluster?.id;
+  const navigate = useNavigate();
+  const access = useAccess();
+  const setClusterSession = useSetAtom(clusterSessionAtom);
+  const [, modalContextHolder] = Modal.useModal();
 
-  const deleteInstance = useCallback(
-    (id: number) => deleteGPUServiceInstance({ namespace, clusterID, id }),
-    [namespace, clusterID]
-  );
-
-  const fetchInstances = useMemoizedFn(
-    async (
-      params: any,
-      options?: any
-    ): Promise<Global.PageResponse<ListItem>> => {
-      const effectiveClusterID = params.cluster_id ?? clusterID;
-      if (!effectiveClusterID) {
-        return {
-          items: [],
-          pagination: {
-            total: 0,
-            totalPage: 0,
-            page: 1,
-            perPage: params.perPage || 10
-          }
-        } as Global.PageResponse<ListItem>;
-      }
-      const res = await queryGPUServiceInstances(
-        { ...params, namespace, clusterID: effectiveClusterID },
-        options
-      );
-      const total = res.items?.length ?? 0;
-      const perPage = params.perPage || 10;
-      return {
-        items: res.items ?? [],
-        pagination: {
-          total,
-          totalPage: Math.ceil(total / perPage),
-          page: params.page || 1,
-          perPage
-        }
-      };
-    }
-  );
+  const handleAddK8sCluster = () => {
+    setClusterSession({
+      firstAddWorker: false,
+      firstAddCluster: true,
+      presetClusterType: 'gpu',
+      providerHint: ProviderValueMap.Kubernetes
+    });
+    navigate('/resources/clusters/list');
+  };
 
   const {
     dataSource,
@@ -88,108 +68,83 @@ const GPUService: React.FC = () => {
     fetchData,
     handlePageChange,
     handleTableChange,
-    handleQueryChange,
     handleSearch,
     handleNameChange
   } = useTableFetch<ListItem>({
     key: PaginationKey.Instances,
-    fetchAPI: fetchInstances,
-    deleteAPI: deleteInstance,
-    watch: false,
-    polling: true,
-    API: GPU_SERVICE_INSTANCES_API({ namespace, clusterID }),
-    contentForDelete: intl.formatMessage({ id: 'gpuservice.instance' })
+    fetchAPI: queryGPUServiceInstances,
+    deleteAPI: deleteGPUServiceInstance,
+    watch: true,
+    API: GPU_SERVICE_INSTANCES_API,
+    contentForDelete: 'gpuservice.instance'
   });
 
-  const { fetchData: createInstance } = useCreateInstance();
+  const { fetchData: createInstance } = useCreateInstanceRequest();
   const { fetchData: updateInstance } = useUpdateInstance();
   const {
+    openInstanceModalStatus,
+    openCreateInstanceModal,
+    openEditInstanceModal,
+    openViewInstanceModal,
+    openRecreateInstanceModal,
+    closeInstanceModal
+  } = useCreateInstance();
+  const { openViewLogsModal, closeViewLogsModal, openViewLogsModalStatus } =
+    useViewLogs();
+  const {
+    openViewEventsModal,
+    closeViewEventsModal,
+    openViewEventsModalStatus
+  } = useViewEvents();
+  const {
     fetchClusterList,
-    cancelRequest: cancelClusterRequest,
-    clusterList
+    cancelRequest,
+    clusterList,
+    loading: clusterLoading
   } = useQueryClusterList();
 
-  const k8sClusterList = useMemo(
-    () =>
-      clusterList.filter(
-        (item) => item.provider === ProviderValueMap.Kubernetes
-      ),
+  // name → capacity for persistent volumes, so the Instance Type popover can
+  // show the persistent disk size (the instance spec only references it by
+  // name). Best-effort: falls back to the name if a PV can't be resolved.
+  const [pvCapacityByName, setPvCapacityByName] = useState<
+    Record<string, string>
+  >({});
+
+  useEffect(() => {
+    fetchClusterList({ page: -1 });
+    const fetchPVCapacities = async () => {
+      try {
+        const res = await queryGPUServiceStorage({ page: -1 } as any);
+        const map: Record<string, string> = {};
+        (res?.items || []).forEach((pv: any) => {
+          if (pv?.name && pv?.spec?.capacity) {
+            map[pv.name] = pv.spec.capacity;
+          }
+        });
+        setPvCapacityByName(map);
+      } catch {
+        // best-effort; the popover falls back to the PV name
+      }
+    };
+    fetchPVCapacities();
+  }, []);
+
+  const hasK8sCluster = useMemo(
+    () => clusterList.some((c) => c.provider === ProviderValueMap.Kubernetes),
     [clusterList]
   );
 
-  const [openAddModalStatus, setOpenAddModalStatus] = useState<{
-    action: PageActionType;
-    open: boolean;
-    title: string;
-    currentData?: ListItem | null;
-  }>({
-    action: PageAction.CREATE,
-    title: '',
-    open: false,
-    currentData: null
-  });
-
-  useEffect(() => {
-    fetchClusterList({ page: -1 }).then((clusters) => {
-      const k8sClusters = clusters.filter(
-        (item: any) => item.provider === ProviderValueMap.Kubernetes
-      );
-      if (k8sClusters.length === 0) {
-        return;
-      }
-      const storedCluster = k8sClusters.find(
-        (item: any) => item.id === currentCluster?.id
-      );
-      const targetCluster = storedCluster ?? k8sClusters[0];
-      if (!storedCluster) {
-        setCurrentCluster({
-          ...targetCluster,
-          label: targetCluster.name,
-          value: targetCluster.id
-        });
-      }
-      handleQueryChange({
-        cluster_id: targetCluster.id,
-        page: 1
-      });
-    });
-    return () => {
-      cancelClusterRequest();
-    };
-  }, []);
-
-  const handleAddInstance = () => {
-    setOpenAddModalStatus({
-      action: PageAction.CREATE,
-      title: intl.formatMessage({ id: 'gpuservice.instance.add' }),
-      open: true,
-      currentData: null
-    });
-  };
-
-  const handleEditInstance = (row: ListItem) => {
-    setOpenAddModalStatus({
-      action: PageAction.EDIT,
-      title: intl.formatMessage({ id: 'gpuservice.instance.edit' }),
-      open: true,
-      currentData: row
-    });
-  };
-
-  const closeModal = () => {
-    setOpenAddModalStatus({
-      action: PageAction.CREATE,
-      title: '',
-      open: false,
-      currentData: null
-    });
-  };
-
   const handleModalOk = async (data: FormData) => {
     try {
-      if (openAddModalStatus.action === PageAction.EDIT) {
+      if (openInstanceModalStatus.realAction === PageAction.CREATE) {
+        await deleteGPUServiceInstance(openInstanceModalStatus.currentData!.id);
+        await new Promise((resolve) => {
+          setTimeout(resolve, 300);
+        });
+        await createInstance({ data });
+      } else if (openInstanceModalStatus.action === PageAction.EDIT) {
         await updateInstance({
-          id: openAddModalStatus.currentData!.id,
+          id: openInstanceModalStatus.currentData!.id,
           data
         });
       } else {
@@ -197,45 +152,155 @@ const GPUService: React.FC = () => {
       }
 
       fetchData();
-      closeModal();
+      closeInstanceModal();
       message.success(intl.formatMessage({ id: 'common.message.success' }));
     } catch (error) {
-      message.error(intl.formatMessage({ id: 'common.message.fail' }));
+      // ignore
     }
   };
 
+  const handleStart = useMemoizedFn((row: ListItem) => {
+    modalRef.current?.show({
+      content: 'gpuservice.instance',
+      title: 'common.title.start.confirm',
+      okText: 'common.button.start',
+      operation: 'common.start.single.confirm',
+      name: row.name,
+      async onOk() {
+        await startGPUServiceInstance(row.id);
+        rowSelection.removeSelectedKeys([row.id]);
+        message.success(intl.formatMessage({ id: 'common.message.success' }));
+        fetchData();
+      }
+    });
+  });
+
+  const handleStop = useMemoizedFn((row: ListItem) => {
+    modalRef.current?.show({
+      content: 'gpuservice.instance',
+      title: 'common.title.stop.confirm',
+      okText: 'common.button.stop',
+      operation: 'common.stop.single.confirm',
+      name: row.name,
+      async onOk() {
+        await stopGPUServiceInstance(row.id);
+        rowSelection.removeSelectedKeys([row.id]);
+        fetchData();
+      }
+    });
+  });
+
+  const handleStartBatch = useMemoizedFn(() => {
+    modalRef.current?.show({
+      content: 'gpuservice.instance',
+      title: 'common.title.start.confirm',
+      okText: 'common.button.start',
+      operation: 'common.start.confirm',
+      selection: true,
+      async onOk() {
+        const successIds: number[] = [];
+        const res = await handleBatchRequest(
+          rowSelection.selectedRowKeys,
+          async (id: number) => {
+            await startGPUServiceInstance(id);
+            successIds.push(id);
+          }
+        );
+        rowSelection.removeSelectedKeys(successIds);
+        fetchData();
+        return res;
+      }
+    });
+  });
+
+  const handleStopBatch = useMemoizedFn(() => {
+    modalRef.current?.show({
+      content: 'gpuservice.instance',
+      title: 'common.title.stop.confirm',
+      okText: 'common.button.stop',
+      operation: 'common.stop.confirm',
+      selection: true,
+      async onOk() {
+        const successIds: number[] = [];
+        const res = await handleBatchRequest(
+          rowSelection.selectedRowKeys,
+          async (id: number) => {
+            await stopGPUServiceInstance(id);
+            successIds.push(id);
+          }
+        );
+        rowSelection.removeSelectedKeys(successIds);
+        fetchData();
+        return res;
+      }
+    });
+  });
+
   const handleSelect = useMemoizedFn((val: string, row: ListItem) => {
-    if (val === 'edit') {
-      handleEditInstance(row);
+    if (val === 'view') {
+      openViewInstanceModal(row);
+    } else if (val === 'edit') {
+      openEditInstanceModal(row);
     } else if (val === 'delete') {
-      handleDelete({
-        ...row,
-        name: row.metadata?.name,
-        id: row.metadata?.name as any
-      });
+      handleDelete({ ...row });
+    } else if (val === 'recreate') {
+      openRecreateInstanceModal(row);
+    } else if (val === 'viewlog') {
+      openViewLogsModal(row);
+    } else if (val === 'viewevent') {
+      openViewEventsModal(row);
+    } else if (val === 'start') {
+      handleStart(row);
+    } else if (val === 'stop') {
+      handleStop(row);
     }
   });
 
-  const handleClusterChange = (value: number) => {
-    const cluster = k8sClusterList.find((item) => item.value === value);
-    if (cluster) {
-      setCurrentCluster(cluster);
+  const handleBatchActionSelect = useMemoizedFn((val: string) => {
+    if (val === 'delete') {
+      handleDeleteBatch();
+    } else if (val === 'start') {
+      handleStartBatch();
+    } else if (val === 'stop') {
+      handleStopBatch();
     }
-    handleQueryChange({
-      cluster_id: value,
-      page: 1
-    });
-  };
+  });
 
   const renderEmpty = (type?: string) => {
     if (type !== 'Table') return;
+    if (!clusterLoading && !hasK8sCluster) {
+      return (
+        <NoResult
+          minHeight="calc(100vh - 300px)"
+          loading={dataSource.loading || clusterLoading}
+          loadend={dataSource.loadend}
+          dataSource={[]}
+          image={<IconFont type="icon-cloud-outlined" />}
+          title={intl.formatMessage({
+            id: 'noresult.gpuservice.instance.title'
+          })}
+          subTitle={intl.formatMessage({
+            id: 'noresult.resources.k8sCluster'
+          })}
+          {...(access.canSeeOrgAdmin
+            ? {
+                buttonText: intl.formatMessage({
+                  id: 'noresult.resources.addk8scluster'
+                }),
+                onClick: handleAddK8sCluster
+              }
+            : {})}
+        />
+      );
+    }
     return (
       <NoResult
+        minHeight="calc(100vh - 300px)"
         loading={dataSource.loading}
         loadend={dataSource.loadend}
         dataSource={dataSource.dataList}
         image={<IconFont type="icon-cloud-outlined" />}
-        filters={_.pick(queryParams, ['search', 'manufacturer'])}
+        filters={_.pick(queryParams, ['search'])}
         noFoundText={intl.formatMessage({
           id: 'noresult.gpuservice.instance.nofound'
         })}
@@ -245,7 +310,7 @@ const GPUService: React.FC = () => {
         subTitle={intl.formatMessage({
           id: 'noresult.gpuservice.instance.subTitle'
         })}
-        onClick={handleAddInstance}
+        onClick={openCreateInstanceModal}
         buttonText={intl.formatMessage({ id: 'noresult.button.add' })}
       />
     );
@@ -253,82 +318,102 @@ const GPUService: React.FC = () => {
 
   const columns = useInstancesColumns({
     handleSelect,
-    sortOrder
+    clusterList,
+    sortOrder,
+    pvCapacityByName
   });
 
   return (
-    <PageContainerInner
-      leftContent={
-        <Flex align="center">
-          <span>{intl.formatMessage({ id: 'menu.gpuService.instances' })}</span>
-          <Divider
-            orientation="vertical"
-            style={{
-              marginLeft: 16
+    <>
+      <PageBox>
+        <FilterBar
+          marginBottom={22}
+          marginTop={30}
+          showSelect={false}
+          handleSearch={handleSearch}
+          handleInputChange={handleNameChange}
+          rowSelection={rowSelection}
+          widths={{ input: 300 }}
+          right={
+            <Space size={16}>
+              {hasK8sCluster && (
+                <Button
+                  icon={<PlusOutlined />}
+                  type="primary"
+                  onClick={openCreateInstanceModal}
+                >
+                  {intl.formatMessage({ id: 'gpuservice.instance.add' })}
+                </Button>
+              )}
+              <DropdownButtons
+                items={batchActionList}
+                onSelect={handleBatchActionSelect}
+                disabled={!rowSelection.selectedRowKeys.length}
+                size="large"
+                showText={true}
+                extra={
+                  rowSelection.selectedRowKeys.length > 0 && (
+                    <span>({rowSelection.selectedRowKeys.length})</span>
+                  )
+                }
+              />
+            </Space>
+          }
+        />
+        <ConfigProvider renderEmpty={renderEmpty}>
+          <Table
+            className={'scroll-table'}
+            columns={columns}
+            dataSource={dataSource.dataList}
+            rowSelection={rowSelection}
+            loading={{
+              spinning: dataSource.loading,
+              size: 'middle'
+            }}
+            sortDirections={TABLE_SORT_DIRECTIONS}
+            showSorterTooltip={false}
+            rowKey={(record) => record.id}
+            onChange={handleTableChange}
+            pagination={{
+              showSizeChanger: true,
+              pageSize: queryParams.perPage,
+              current: queryParams.page,
+              total: dataSource.total,
+              hideOnSinglePage: queryParams.perPage === 10,
+              onChange: handlePageChange
             }}
           />
-          <BaseSelect
-            variant="borderless"
-            value={queryParams.cluster_id}
-            options={k8sClusterList}
-            onChange={handleClusterChange}
-            style={{ minWidth: 120, fontWeight: 500 }}
-          ></BaseSelect>
-        </Flex>
-      }
-    >
-      <FilterBar
-        marginBottom={22}
-        marginTop={30}
-        showSelect={false}
-        selectOptions={k8sClusterList}
-        select={{ showSearch: true }}
-        selectHolder={intl.formatMessage({
-          id: 'gpuservice.instance.filter.cluster'
-        })}
-        buttonText={intl.formatMessage({ id: 'gpuservice.instance.add' })}
-        handleSearch={handleSearch}
-        handleSelectChange={handleClusterChange}
-        handleDeleteByBatch={handleDeleteBatch}
-        handleClickPrimary={handleAddInstance}
-        handleInputChange={handleNameChange}
-        rowSelection={rowSelection}
-        widths={{ input: 300 }}
-      />
-      <ConfigProvider renderEmpty={renderEmpty}>
-        <Table
-          columns={columns}
-          dataSource={dataSource.dataList}
-          rowSelection={rowSelection}
-          loading={{
-            spinning: dataSource.loading,
-            size: 'middle'
-          }}
-          sortDirections={TABLE_SORT_DIRECTIONS}
-          showSorterTooltip={false}
-          rowKey={(record) => record.metadata.name}
-          onChange={handleTableChange}
-          pagination={{
-            size: 'middle',
-            showSizeChanger: true,
-            pageSize: queryParams.perPage,
-            current: queryParams.page,
-            total: dataSource.total,
-            hideOnSinglePage: queryParams.perPage === 10,
-            onChange: handlePageChange
-          }}
-        />
-      </ConfigProvider>
+        </ConfigProvider>
+      </PageBox>
       <AddModal
-        open={openAddModalStatus.open}
-        action={openAddModalStatus.action}
-        title={openAddModalStatus.title}
-        data={openAddModalStatus.currentData}
-        onCancel={closeModal}
+        open={openInstanceModalStatus.open}
+        action={openInstanceModalStatus.action}
+        title={openInstanceModalStatus.title}
+        data={openInstanceModalStatus.currentData}
+        width={openInstanceModalStatus.width}
+        realAction={openInstanceModalStatus.realAction}
+        clusterList={clusterList}
+        onCancel={closeInstanceModal}
         onOk={handleModalOk}
       />
+      <ViewLogsModal
+        open={openViewLogsModalStatus.open}
+        url={openViewLogsModalStatus.url}
+        tail={openViewLogsModalStatus.tail}
+        onCancel={closeViewLogsModal}
+      />
+      <ViewEventsModal
+        open={openViewEventsModalStatus.open}
+        name={openViewEventsModalStatus.name}
+        namespace={openViewEventsModalStatus.namespace}
+        clusterID={openViewEventsModalStatus.clusterID}
+        volumeName={openViewEventsModalStatus.volumeName}
+        hasPersistentVolume={openViewEventsModalStatus.hasPersistentVolume}
+        onCancel={closeViewEventsModal}
+      />
       <DeleteModal ref={modalRef} />
-    </PageContainerInner>
+      {modalContextHolder}
+    </>
   );
 };
 

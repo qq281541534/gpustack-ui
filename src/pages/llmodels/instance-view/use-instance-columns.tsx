@@ -1,10 +1,11 @@
 // columns.ts
 import { tableSorter } from '@/config/settings';
 import { ListItem as workerListItem } from '@/pages/resources/config/types';
+import { usePluginListColumns } from '@/plugins/list-extra-columns';
 import { convertFileSize } from '@/utils';
+import { ThunderboltFilled } from '@ant-design/icons';
 import { AutoTooltip, IconFont } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
-import { Flex } from 'antd';
 import { ColumnsType } from 'antd/lib/table';
 import dayjs from 'dayjs';
 import _ from 'lodash';
@@ -12,60 +13,63 @@ import { useMemo } from 'react';
 import ActionsCell from '../components/instance-cells/actions-cell';
 import DistributeInfoCell from '../components/instance-cells/distribute-info-cell';
 import DownloadingStatusCell from '../components/instance-cells/downloading-status-cell';
-import InjectedParamsCell from '../components/instance-cells/injected-params-cell';
 import InstanceStatusCell from '../components/instance-cells/instance-status-cell';
 import NameCell, {
   NameCellProps
 } from '../components/instance-cells/name-cell';
-import { ModelInstanceListItem as ListItem } from '../config/types';
+import {
+  DistributedServerItem,
+  ModelInstanceListItem as ListItem,
+  ListItem as ModelListItem
+} from '../config/types';
 import { calcTotalVram } from '../utils';
-const WorkerInfoContent: React.FC<NameCellProps> = ({ record, modelData }) => {
+
+const WorkerInfoContent: React.FC<
+  NameCellProps & { workerList: workerListItem[] }
+> = ({ record, modelData, workerList }) => {
   let workerIp = '-';
+  const distributed_servers = record.distributed_servers;
+  const severList: DistributedServerItem[] =
+    distributed_servers?.subordinate_workers || [];
+
   if (record.worker_ip) {
     workerIp = record.port
       ? `${record.worker_ip}:${record.port}`
       : record.worker_ip;
   }
+
   return (
     <div>
       <div>{record.worker_name}</div>
-      {/* <div className="flex-center">
-        <HddFilled className="m-r-5 text-tertiary" style={{ fontSize: 12 }} />
-        <span className="text-secondary">{workerIp}</span>
-      </div> */}
-      <div className="flex-center">
-        <IconFont
-          type="icon-filled-gpu"
-          className="m-r-5 text-quaternary"
-          style={{ fontSize: 12 }}
-        />
-        <span className="text-quaternary">
-          GPU:[
-          {_.join(
-            record.gpu_indexes?.sort?.((a, b) => a - b),
-            ','
-          )}
-          ]
-        </span>
-      </div>
-      {/* <div className="flex-center">
-        <ThunderboltFilled
-          className="m-r-5 text-tertiary"
-          style={{ fontSize: 12 }}
-        />
-        <span className="text-secondary">
-          {record?.backend || modelData?.backend || ''}
-          {record.backend_version || modelData?.backend_version
-            ? `(${record.backend_version || modelData?.backend_version})`
-            : ''}
-        </span>
-      </div> */}
+      {severList.length > 0 ? (
+        <DistributeInfoCell
+          record={record}
+          workerList={workerList}
+        ></DistributeInfoCell>
+      ) : (
+        <div className="flex-center">
+          <IconFont
+            type="icon-filled-gpu"
+            className="m-r-5 text-quaternary"
+            style={{ fontSize: 12 }}
+          />
+          <span className="text-quaternary">
+            GPU:[
+            {_.join(
+              record.gpu_indexes?.sort?.((a, b) => a - b),
+              ','
+            )}
+            ]
+          </span>
+        </div>
+      )}
     </div>
   );
 };
 
 const useInstancesColumns = (options: {
   workerList: workerListItem[];
+  modelList: ModelListItem[];
   clusterList: Global.BaseOption<
     number,
     {
@@ -78,12 +82,15 @@ const useInstancesColumns = (options: {
   onCellClick?: (record: ListItem, dataIndex: string) => void;
 }): ColumnsType<ListItem> => {
   const intl = useIntl();
-  const { workerList, clusterList, handleSelect, onCellClick } = options;
+  const { workerList, clusterList, modelList, handleSelect, onCellClick } =
+    options;
+  const pluginCols = usePluginListColumns('modelInstances');
 
   const renderWorkerCell = (text: number, record: ListItem) => {
     if (text) {
       return (
         <WorkerInfoContent
+          workerList={workerList}
           record={record}
           modelData={{
             backend: record.backend,
@@ -96,6 +103,12 @@ const useInstancesColumns = (options: {
   };
 
   return useMemo(() => {
+    const pluginRendered = pluginCols.map((c) => ({
+      title: intl.formatMessage({ id: c.titleId }),
+      key: c.key,
+      ellipsis: { showTitle: false },
+      render: (_text: any, record: ListItem) => c.render(record)
+    }));
     return [
       {
         title: intl.formatMessage({ id: 'common.table.name' }),
@@ -104,37 +117,33 @@ const useInstancesColumns = (options: {
         minWidth: 160,
         render: (value: string, record: ListItem) => (
           <>
-            <Flex gap={8} wrap="wrap">
-              <NameCell
-                showWorkerInfo={true}
-                record={record}
-                modelData={{
-                  backend: record.backend,
-                  backend_version: record.backend_version
-                }}
-                styles={{
-                  label: {
-                    color: 'var(--ant-color-text)'
-                  }
-                }}
-              ></NameCell>
-              <InjectedParamsCell record={record}></InjectedParamsCell>
-            </Flex>
-            {/* <div className="flex-center">
+            <NameCell
+              showWorkerInfo={false}
+              record={record}
+              modelData={{
+                backend: record.backend,
+                backend_version: record.backend_version
+              }}
+              styles={{
+                label: {
+                  color: 'var(--ant-color-text)'
+                }
+              }}
+            ></NameCell>
+            <div className="flex-center">
               <ThunderboltFilled
                 className="m-r-5 text-quaternary"
                 style={{ fontSize: 12, position: 'relative', top: 2 }}
               />
               <span className="text-quaternary">
-                {record?.backend || record?.backend || ''}
-                {record.backend_version || record?.backend_version
-                  ? `(${record.backend_version || record?.backend_version})`
-                  : ''}
+                {record?.backend || ''}
+                {record.backend_version ? `(${record.backend_version})` : ''}
               </span>
-            </div> */}
+            </div>
           </>
         )
       },
+      ...pluginRendered,
       {
         title: intl.formatMessage({ id: 'clusters.title' }),
         dataIndex: 'cluster_id',
@@ -152,11 +161,7 @@ const useInstancesColumns = (options: {
         dataIndex: 'worker_id',
         render: (text, record) => (
           <div className="flex-center gap-8">
-            <AutoTooltip ghost>{record.worker_name}</AutoTooltip>
-            <DistributeInfoCell
-              record={record}
-              workerList={workerList}
-            ></DistributeInfoCell>
+            <AutoTooltip ghost>{renderWorkerCell(text, record)}</AutoTooltip>
           </div>
         )
       },
@@ -180,7 +185,7 @@ const useInstancesColumns = (options: {
         width: 160,
         render: (text: string, record: ListItem) => (
           <span style={{ gap: 4 }} className="flex-center">
-            <InstanceStatusCell record={record} onSelect={() => {}} />
+            <InstanceStatusCell record={record} onSelect={handleSelect} />
             <DownloadingStatusCell
               backend={record?.backend}
               distributed_servers={record.distributed_servers}
@@ -209,15 +214,25 @@ const useInstancesColumns = (options: {
         render: (value: string, record: ListItem) => (
           <ActionsCell
             record={record}
-            modelData={{
-              categories: record.categories || []
-            }}
+            modelData={
+              modelList.find(
+                (model) => model.id === record.model_id
+              ) as ModelListItem
+            }
             onSelect={handleSelect}
           ></ActionsCell>
         )
       }
     ];
-  }, [handleSelect, onCellClick, workerList, clusterList]);
+  }, [
+    handleSelect,
+    onCellClick,
+    workerList,
+    clusterList,
+    modelList,
+    intl,
+    pluginCols
+  ]);
 };
 
 export default useInstancesColumns;

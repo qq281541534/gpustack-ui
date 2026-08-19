@@ -20,6 +20,7 @@ import {
 import { useFormContext } from '../config/form-context';
 import { FormData } from '../config/types';
 import { backendOptionsMap } from '../constants/backend-parameters';
+import '../style/gpu-selector.less';
 
 const InputWrapper = styled.div`
   padding: 8px 4px;
@@ -175,13 +176,20 @@ const ScheduleTypeForm: React.FC = () => {
               <SealCascader
                 required
                 showSearch
-                expandTrigger="hover"
+                expandTrigger="click"
                 multiple={
                   form.getFieldValue('backend') !== backendOptionsMap.voxBox
                 }
                 classNames={{
                   popup: {
                     root: 'cascader-popup-wrapper gpu-selector'
+                  }
+                }}
+                styles={{
+                  popup: {
+                    listItem: {
+                      maxWidth: 'unset'
+                    }
                   }
                 }}
                 maxTagCount={1}

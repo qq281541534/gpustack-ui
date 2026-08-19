@@ -2,6 +2,7 @@ export default {
   'gpuservice.template': 'GPU Örnek Şablonu',
   'gpuservice.template.add': 'Örnek Şablonu Ekle',
   'gpuservice.template.edit': 'Örnek Şablonunu Düzenle',
+  'gpuservice.template.clone': 'Örnek Şablonunu Klonla',
   'gpuservice.template.filter.name': 'Ada göre filtrele',
   'gpuservice.template.filter.vendor': 'Tedarikçiye göre filtrele',
   'gpuservice.template.image': 'İmaj',
@@ -13,12 +14,26 @@ export default {
   'gpuservice.template.command.placeholder':
     'Argümanları boşlukla ayırın; boşluk içeren argümanları tırnak içine alın, örn.: /bin/bash -c "echo hello world"',
   'gpuservice.template.mountPath': 'Bağlama Yolu',
+  'gpuservice.template.mountPath.tips':
+    'Bu şablondan bir örnek oluşturulurken depolama biriminin varsayılan olarak bağlanacağı yol. Örnek çalışırken saklanması gereken verileri kalıcı hale getirmek için kullanılabilir.',
   'gpuservice.template.containerDisk': 'Konteyner Diski (GB)',
+  'gpuservice.template.containerDisk.tips': 'Konteyner sistem diskinin boyutu.',
   'gpuservice.template.memory': 'Bellek (GB)',
+  'gpuservice.instance.containerDisk.remaining':
+    'Konteyner Diski (Maks. {count} GB)',
+  'gpuservice.instance.memory.remaining': 'Bellek (Maks. {count} GB)',
+  'gpuservice.template.displayName': 'Görünen Ad',
+  'gpuservice.template.displayName.max':
+    'Görünen ad 63 karakterden uzun olamaz.',
   'gpuservice.template.ports': 'Bağlantı Noktaları',
   'gpuservice.template.ports.add': 'Bağlantı Noktası Ekle',
   'gpuservice.template.ports.invalid':
     'Bağlantı noktası yapılandırmasını eksiksiz doldurun.',
+  'gpuservice.template.ports.name': 'Ad',
+  'gpuservice.template.ports.name.max':
+    'Bağlantı noktası adı 16 karakterden uzun olamaz.',
+  'gpuservice.template.ports.name.duplicate':
+    'Bağlantı noktası adları benzersiz olmalıdır.',
   'gpuservice.template.env': 'Ortam Değişkenleri',
   'gpuservice.template.env.add': 'Ortam Değişkeni Ekle',
   'gpuservice.template.env.invalid': 'Ortam değişkenlerini eksiksiz doldurun.',
@@ -28,7 +43,51 @@ export default {
   'gpuservice.template.card.mount': 'Bağlama',
   'gpuservice.template.card.resources': 'Kaynaklar',
   'gpuservice.template.card.ports': 'Bağlantı Noktaları',
+  'gpuservice.storageType': 'Depolama Türü',
+  'gpuservice.storageType.add': 'Depolama Türü Ekle',
+  'gpuservice.storageType.edit': 'Depolama Türünü Düzenle',
+  'gpuservice.storageType.filter.name': 'Ada göre ara',
+  'gpuservice.storageType.kind': 'Tür',
+  'gpuservice.storageType.mountOptions': 'Bağlama Seçenekleri',
+  'gpuservice.storageType.nfs.server': 'NFS Sunucusu',
+  'gpuservice.storageType.nfs.server.tips':
+    'NFS sunucu adresinin tüm Kubernetes kümelerinden erişilebilir olduğundan emin olun.',
+  'gpuservice.storageType.nfs.share': 'Paylaşım Yolu',
+  'gpuservice.storageType.nfs.share.tips':
+    'Bu paylaşım yolu altında organizasyon ve depolama adlarına dayalı bir dizin otomatik olarak oluşturulur. Bir alt dizin belirtilmişse, oluşturulan dizin o alt dizin altında yer alır.',
+  'gpuservice.storageType.nfs.subDirectory': 'Alt Dizin',
+  'gpuservice.storageType.nfs.subDirectory.tips':
+    'Boş bırakılırsa kalıcı hacim adıyla bir alt dizin oluşturulur. Doldurulursa bu alt dizinin altında kalıcı hacim adıyla bir dizin oluşturulur.',
+  'gpuservice.storageType.nfs.mountPermissions': 'Bağlama İzinleri',
+  'gpuservice.storageType.nfs.mountPermissions.tips':
+    'NFS sunucusundaki dosya izinleri devralınır.',
+  'gpuservice.storageType.s3.endpoint': 'Endpoint',
+  'gpuservice.storageType.s3.endpoint.tips':
+    'S3 endpoint adresinin tüm Kubernetes kümelerinden erişilebilir olduğundan emin olun.',
+  'gpuservice.storageType.s3.endpoint.rule': 'http veya https ile başlamalıdır',
+  'gpuservice.storageType.s3.region': 'Bölge',
+  'gpuservice.storageType.s3.bucket': 'Kova',
+  'gpuservice.storageType.s3.bucket.tips':
+    'Boş bırakılırsa kalıcı hacim adıyla yeni bir kova oluşturulur. Doldurulursa bu kova içinde kalıcı hacim adıyla bir alt dizin oluşturulur.',
+  'gpuservice.storageType.s3.bucket.tips1':
+    'Bu kova içinde organizasyon ve depolama adlarına dayalı bir önek dizini otomatik olarak oluşturulur.',
+  'gpuservice.storageType.s3.bucket.tips2':
+    'Örneğin, organizasyon adı <span class="desc-block">awesome-group</span> ve depolama adı <span class="desc-block">storage-1</span> ise, oluşacak önek: <span class="desc-block">awesome-group/storage-1</span>.',
+  'gpuservice.storageType.s3.accessKey': 'Access Key',
+  'gpuservice.storageType.s3.secretKey': 'Secret Key',
+  'gpuservice.storageType.s3.insecure': 'TLS/SSL sertifika doğrulamasını atla',
+  'gpuservice.storageType.s3.insecure.tips':
+    'Etkinleştirildiğinde S3 sunucu sertifikası doğrulanmaz. İç ağ testleri veya kendinden imzalı sertifikalar için uygundur; üretim ortamında dikkatli kullanın.',
+  'gpuservice.publicKey': 'SSH Açık Anahtarı',
+  'gpuservice.publicKey.add': 'SSH Açık Anahtarı Ekle',
+  'gpuservice.publicKey.edit': 'SSH Açık Anahtarını Düzenle',
+  'gpuservice.publicKey.delete.tips':
+    'Bir SSH Açık Anahtarını silmek, mevcut bağlı Örneklerin erişimini iptal etmez. Erişimi kaldırmak için ilgili Örnekleri ayrı ayrı düzenleyin.',
+  'gpuservice.publicKey.filter.name': 'Ada göre ara',
   'gpuservice.publicKey.label': 'SSH Açık Anahtarı',
+  'gpuservice.instance.ssh.enable': 'SSH Erişimini Etkinleştir',
+  'gpuservice.instance.ssh.assignKey': 'SSH Açık Anahtarı Ata',
+  'gpuservice.instance.ssh.addKey': 'SSH Açık Anahtarı Ekle',
   'gpuservice.publicKey.placeholder':
     'ssh-rsa veya ssh-ed25519 ile başlar, her açık anahtar ayrı bir satırda\n\nAçık anahtarı görüntüle:\n- RSA\ncat ~/.ssh/id_rsa.pub\n- Ed25519\ncat ~/.ssh/id_ed25519.pub',
   'gpuservice.instance': 'GPU Örneği',
@@ -44,22 +103,47 @@ export default {
   'gpuservice.instance.templates': 'Örnek Şablonları',
   'gpuservice.instance.section.storage': 'Depolama Hacmi',
   'gpuservice.instance.type.required': 'Lütfen bir örnek türü seçin',
+  'gpuservice.instance.type.noAvailable': 'Kullanılabilir örnek türü yok',
   'gpuservice.instance.gpuCount': 'GPU Sayısı',
   'gpuservice.instance.gpuCount.required': 'Lütfen GPU sayısını girin',
-  'gpuservice.instance.gpuCount.max':
-    'Mevcut örnek türü en fazla {count} GPU destekler',
+  'gpuservice.instance.gpuCount.max': 'En fazla {count} GPU kartı seçin',
+  'gpuservice.instance.gpuCount.min': 'En az {count} GPU kartı seçin',
+  'gpuservice.instance.cpuCount.max': 'En fazla {count} CPU çekirdeği seçin',
+  'gpuservice.instance.cpuCount.min': 'En az {count} CPU çekirdeği seçin',
+  'gpuservice.instance.gpuCount.noAvailable':
+    'Kullanılabilir GPU kaynağı yok, lütfen başka bir örnek türü seçin.',
+  'gpuservice.instance.gpuCount.zero': 'Yalnızca CPU, ortam hazırlığı için.',
   'gpuservice.instance.stock': 'Stok',
   'gpuservice.instance.sliced': 'Bölünmüş',
-  'gpuservice.instance.memory': 'Bellek',
+  'gpuservice.instance.memory': 'VRAM',
   'gpuservice.instance.ram': 'RAM',
-  'gpuservice.instance.search.type.placeholder':
-    "Ada, VRAM, belleğe veya vCPU'ya göre ara",
+  'gpuservice.instance.os': 'OS',
+  'gpuservice.instance.arch': 'Mimari',
+  'gpuservice.instance.disk': 'Disk',
+  'gpuservice.table.count': 'Sayı',
+  'gpuservice.instance.disk.system': 'Sistem Diski',
+  'gpuservice.instance.disk.ephemeral': 'Geçici Depolama',
+  'gpuservice.instance.disk.persistent': 'Kalıcı Depolama',
+  'gpuservice.instance.search.type.placeholder': 'Ada göre ara',
   'gpuservice.instance.search.template.placeholder':
     'Şablon adına, imaja veya bağlama yoluna göre ara',
   'gpuservice.instance.template.image': 'İmaj',
   'gpuservice.instance.template.mount': 'Bağlama',
   'gpuservice.instance.connect': 'Bağlan',
   'gpuservice.instance.connect.copySshCommand': 'SSH Komutunu Kopyala',
+  'gpuservice.instance.event.reason': 'Neden',
+  'gpuservice.instance.event.message': 'Mesaj',
+  'gpuservice.instance.event.source': 'Kaynak',
+  'gpuservice.instance.event.count': 'Sayı',
+  'gpuservice.instance.event.lastSeen': 'Son Görülen',
+  'gpuservice.instance.event.recentHourTip':
+    'Yalnızca son bir saatteki olaylar gösterilir',
+  'gpuservice.instance.event.tab.instance': 'Örnek Olayları',
+  'gpuservice.instance.event.tab.volume': 'Birim Olayları',
+  'gpuservice.instance.recreate.confirm.title':
+    'Yeniden oluşturma onaylansın mı',
+  'gpuservice.instance.recreate.confirm.content':
+    'Mevcut örnek önce silinecek, ardından mevcut yapılandırmayla yeniden oluşturulacaktır.\n <span style="font-size: 13px;font-weight: 700">{name}</span>',
   'gpuservice.storage': 'Depolama',
   'gpuservice.storage.add': 'Depolama Ekle',
   'gpuservice.storage.edit': 'Depolamayı Düzenle',
@@ -72,10 +156,25 @@ export default {
   'gpuservice.storage.accessMode': 'Erişim Modu',
   'gpuservice.storage.persistent': 'Kalıcı',
   'gpuservice.storage.temporary': 'Geçici',
-  'gpuservice.storage.persistentVolume': 'Kalıcı Hacim',
-  'gpuservice.storage.persistentVolume.required':
-    'Lütfen bir kalıcı hacim seçin',
-  'gpuservice.storage.tempCapacity': 'Depolama Kapasitesi (GB)',
+  'gpuservice.storage.persistentVolume': 'Kalıcı',
+  'gpuservice.storage.persistentVolume.required': 'Lütfen bir depolama seçin',
+  'gpuservice.storage.persistentVolume.capacity': 'Kapasite (GB)',
+  'gpuservice.storage.persistentVolume.capacity.required':
+    'Lütfen kapasiteyi girin',
+  'gpuservice.storage.persistentVolume.releaseWithInstance':
+    'Örnekle birlikte serbest bırak',
+  'gpuservice.storage.tempCapacity': 'Kapasite (GB)',
   'gpuservice.storage.tempCapacity.required':
-    'Lütfen yerel geçici depolama kapasitesini girin'
+    'Lütfen geçici depolama kapasitesini girin',
+  'gpuservice.form.rule.name':
+    "Küçük harfler, rakamlar ve '-'. Harf veya rakamla başlamalı ve bitmeli, ardışık '-' içermemeli, en fazla 63 karakter.",
+  'gpuservice.storage.temporary.tips':
+    'Data is cleared when the instance stops.',
+  'gpuservice.storage.persistentVolume.tips':
+    'Data persists across instance restarts. Persistent volumes remain intact after instance termination and can be shared by multiple instances.',
+  'gpuservice.form.storage.select': 'Depolamayı Seç',
+  'gpuservice.creator': 'Oluşturan',
+  'gpuservice.owner.global': 'Genel',
+  'gpuservice.template.group.yours': 'Şablonlarınız',
+  'gpuservice.template.group.global': 'Genel Şablonlar'
 };

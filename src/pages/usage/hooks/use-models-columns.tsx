@@ -1,73 +1,73 @@
 // columns.ts
-import ProviderLogo from '@/pages/maas-provider/components/provider-logo';
+import { getGPUStackPlugin } from '@/plugins';
 import { AutoTooltip } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
-import { Tag } from 'antd';
 import { useMemo } from 'react';
+import DeletedTag from '../components/deleted-tag';
 import { BreakdownItem as ListItem } from '../config/types';
 
-interface ColumnsHookProps {
-  sortOrder: string[];
-}
-
-const useModelsColumns = (): Array<{
-  title: string;
-  dataIndex: string | string[];
+// Plugin slot: enterprise plugins can contribute extra columns to the
+// usage breakdown Models table via `usage.modelsExtraColumns`. Each
+// entry renders a per-row cell keyed off `record.route.identity.current
+// .route_id`. `placement` decides where in the existing column order
+// the column lands (currently only `before-last-active` is supported,
+// which is the natural spot for per-route quota / usage indicators).
+export type UsageModelsPluginColumn = {
   key: string;
-}> => {
+  titleId: string;
+  placement?: 'before-last-active';
+  render: (record: ListItem) => React.ReactNode;
+};
+
+type ColumnDef = {
+  title: React.ReactNode;
+  dataIndex?: string | string[];
+  key: string;
+  sorter?: boolean;
+  ellipsis?: { showTitle: boolean };
+  render?: (text: any, record: ListItem) => React.ReactNode;
+};
+
+const useModelsColumns = (): ColumnDef[] => {
   const intl = useIntl();
 
   return useMemo(() => {
+    const pluginColumns: UsageModelsPluginColumn[] =
+      getGPUStackPlugin()?.usage?.modelsExtraColumns ?? [];
+
+    const pluginCols: ColumnDef[] = pluginColumns.map((c) => ({
+      title: intl.formatMessage({ id: c.titleId }),
+      key: c.key,
+      render: (_text: any, record: ListItem) => c.render(record)
+    }));
+    const beforeLastActive = pluginCols.filter(
+      (_c, i) =>
+        (pluginColumns[i].placement ?? 'before-last-active') ===
+        'before-last-active'
+    );
     return [
       {
         title: intl.formatMessage({ id: 'common.table.name' }),
-        dataIndex: ['model', 'identity', 'value', 'model_name'],
-        key: 'model_name',
+        dataIndex: ['route', 'label'],
+        key: 'route_name',
         render: (text: string, record: ListItem) => (
-          <span className="flex items-center">
+          <span className="flex items-center gap-8">
             <AutoTooltip
               ghost
               style={{ maxWidth: 400 }}
               title={<span>{text}</span>}
             >
-              <span className="text-primary">{text}</span>
-            </AutoTooltip>
-            {record.model?.deleted && (
-              <Tag
-                style={{
-                  marginLeft: 8,
-                  borderRadius: 12,
-                  color: 'var(--ant-color-text-tertiary)',
-                  borderColor: 'var(--ant-color-split)',
-                  backgroundColor: 'transparent'
-                }}
-                variant="outlined"
+              <span
+                className={
+                  record.route?.deleted ? 'text-tertiary' : 'text-primary'
+                }
               >
-                {intl.formatMessage({ id: 'usage.table.deleted' })}
-              </Tag>
-            )}
-          </span>
-        )
-      },
-      {
-        title: intl.formatMessage({ id: 'usage.table.cluster' }),
-        dataIndex: ['model', 'identity', 'value', 'cluster_name'],
-        key: 'cluster_name',
-        render: (text: string, record: ListItem) => (
-          <AutoTooltip ghost>{text || '-'}</AutoTooltip>
-        )
-      },
-      {
-        title: intl.formatMessage({ id: 'usage.table.provider' }),
-        dataIndex: ['model', 'identity', 'value', 'provider_type'],
-        key: 'provider_type',
-        render: (text: string, record: ListItem) => (
-          <span className="flex-center gap-8">
-            <ProviderLogo provider={text || 'deployments'} />
-            <AutoTooltip ghost style={{ maxWidth: 400 }}>
-              {text ||
-                (!text && intl.formatMessage({ id: 'menu.models.deployment' }))}
+                {text}
+              </span>
             </AutoTooltip>
+            {record.route?.deleted && (
+              <DeletedTag id={record.route?.identity?.current?.route_id} />
+            )}
           </span>
         )
       },
@@ -81,7 +81,11 @@ const useModelsColumns = (): Array<{
         )
       },
       {
-        title: intl.formatMessage({ id: 'usage.table.inputTokensCached' }),
+        title: (
+          <AutoTooltip ghost>
+            {intl.formatMessage({ id: 'usage.table.inputTokensCached' })}
+          </AutoTooltip>
+        ),
         dataIndex: 'input_cached_tokens',
         key: 'input_cached_tokens',
         sorter: true,
@@ -118,6 +122,7 @@ const useModelsColumns = (): Array<{
         },
         render: (text: number) => <AutoTooltip ghost>{text}</AutoTooltip>
       },
+      ...beforeLastActive,
       {
         title: intl.formatMessage({ id: 'usage.table.lastActive' }),
         dataIndex: 'last_active',

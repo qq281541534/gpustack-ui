@@ -1,9 +1,5 @@
-import { currentClusterAtom } from '@/atoms/gpuservice';
-import { getCurrentOrganizationId } from '@/atoms/user';
 import { useQueryData } from '@gpustack/core-ui';
-import { useAtomValue } from 'jotai';
 import { useCallback } from 'react';
-import { apiVersion, KindMapping } from '../../constants';
 import { createGPUServiceInstance } from '../apis';
 import { FormData, ListItem } from '../config/types';
 
@@ -12,29 +8,10 @@ interface CreateInstanceParams {
 }
 
 export default function useCreateInstance() {
-  const namespace = getCurrentOrganizationId();
-  const currentCluster = useAtomValue(currentClusterAtom);
-  const clusterID = currentCluster?.id;
-
   const fetchDetail = useCallback(
-    (params: CreateInstanceParams, option?: any) =>
-      createGPUServiceInstance(
-        {
-          namespace,
-          clusterID,
-          data: {
-            apiVersion,
-            kind: KindMapping.instance,
-            metadata: {
-              name: params.data.metadata.name,
-              namespace
-            },
-            spec: params.data.spec
-          }
-        },
-        option
-      ),
-    [namespace, clusterID]
+    (params: CreateInstanceParams) =>
+      createGPUServiceInstance({ data: params.data }),
+    []
   );
 
   const { detailData, loading, cancelRequest, fetchData } = useQueryData<

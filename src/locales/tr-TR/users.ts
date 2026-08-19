@@ -13,6 +13,11 @@ export default {
     'Bu kullanıcı hesabını etkinleştir veya devre dışı bırak',
   'users.form.fullname': 'Tam Ad',
   'users.form.source': 'Kaynak',
+  'users.form.source.local': 'Yerel',
+  'users.form.source.tip.switchToLocal':
+    'Yerel kaynağa geçmek yeni bir parola gerektirir. Kullanıcı bundan sonra standart oturum açma formunu kullanır.',
+  'users.form.source.tip.switchToExternal':
+    'Harici bir kaynağa geçmek kullanıcının yerel parolasını siler. Kullanıcı bundan sonra yapılandırılmış kimlik sağlayıcı üzerinden oturum açar.',
   'users.table.user': 'kullanıcılar',
   'users.form.admin': 'Yönetici',
   'users.form.user': 'Kullanıcı',
@@ -29,6 +34,8 @@ export default {
   'users.password.modify.title': 'Şifreyi Değiştir',
   'users.password.modify.description':
     'Hesabınızın güvenliği için lütfen başlangıç şifrenizi değiştirin.',
+  'users.password.modify.tips':
+    'Parolanızı düzenli olarak güncellemek hesabınızın güvenliğini korumaya yardımcı olur.',
   'users.password.confirm': 'Yeni Şifreyi Onayla',
   'users.password.confirm.empty': 'Lütfen yeni şifreyi tekrar girin.',
   'users.password.confirm.error': 'Girilen iki şifre eşleşmiyor.',

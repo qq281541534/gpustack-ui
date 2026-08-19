@@ -35,8 +35,11 @@ export default {
   'noresult.catalog.subTitle': '尚未配置任何模型。',
   'noresult.catalog.nofound': '未找到匹配的模型',
   'noresult.resources.cluster': '暂无可用集群，请添加集群以开始使用。',
+  'noresult.resources.k8sCluster':
+    '暂无可用集群，请添加 Kubernetes 集群以开始使用。',
   'noresult.resources.worker': '暂无可用节点，请添加节点以开始使用。',
   'noresult.resources.gotocluster': '创建您的第一个集群',
+  'noresult.resources.addk8scluster': '添加 Kubernetes 集群',
   'noresult.resources.gotoworker': '添加节点',
   'noresult.benchmark.title': '暂无基准测试',
   'noresult.benchmark.subTitle': '尚未添加任何基准测试。',
@@ -59,5 +62,11 @@ export default {
   'noresult.gpuservice.instance.nofound': '未找到匹配的 GPU 实例',
   'noresult.gpuservice.storage.title': '暂无存储',
   'noresult.gpuservice.storage.subTitle': '尚未添加任何存储。',
-  'noresult.gpuservice.storage.nofound': '未找到匹配的存储'
+  'noresult.gpuservice.storage.nofound': '未找到匹配的存储',
+  'noresult.gpuservice.storageType.title': '暂无存储类型',
+  'noresult.gpuservice.storageType.subTitle': '尚未添加任何存储类型。',
+  'noresult.gpuservice.storageType.nofound': '未找到匹配的存储类型',
+  'noresult.gpuservice.sshkey.title': '暂无 SSH 公钥',
+  'noresult.gpuservice.sshkey.subTitle': '尚未添加任何 SSH 公钥。',
+  'noresult.gpuservice.sshkey.nofound': '未找到匹配的 SSH 公钥'
 };

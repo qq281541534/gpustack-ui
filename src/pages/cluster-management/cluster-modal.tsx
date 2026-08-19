@@ -6,13 +6,18 @@ import ClusterCreate from './cluster-create';
 interface ClusterModalProps {
   open: boolean;
   title: string;
+  pendingProviderHint?: {
+    providerHint?: string;
+    presetClusterType?: 'model' | 'gpu';
+  };
   onClose: () => void;
 }
 
 const ClusterModal: React.FC<ClusterModalProps> = ({
   open,
   onClose,
-  title
+  title,
+  pendingProviderHint
 }) => {
   const [currentTitle, setCurrentTitle] = React.useState<string>(title);
   const handleCancel = () => {
@@ -41,6 +46,8 @@ const ClusterModal: React.FC<ClusterModalProps> = ({
       <ClusterCreate
         onClose={handleCancel}
         action={PageAction.CREATE}
+        providerHint={pendingProviderHint?.providerHint}
+        presetClusterType={pendingProviderHint?.presetClusterType}
         setCurrentTitle={setCurrentTitle}
       ></ClusterCreate>
     </GSDrawer>

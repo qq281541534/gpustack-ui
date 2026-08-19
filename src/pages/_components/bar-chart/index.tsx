@@ -1,9 +1,15 @@
 import useCoolColors from '@/hooks/use-cool-colors';
-import { Chart } from '@gpustack/core-ui';
+import { Chart } from '@gpustack/core-ui/charts';
 import { formatLargeNumber } from '@gpustack/core-ui/utils';
-import { theme } from 'antd';
+import { Empty, Spin, theme } from 'antd';
 import _ from 'lodash';
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 
 export interface BarSeriesItem {
   name: string;
@@ -17,10 +23,18 @@ export interface BarChartProps {
   xAxisData: string[];
   height: number | string;
   width?: number | string;
+  loading?: boolean;
   legendData?: { name: string; icon?: string }[];
   labelFormatter?: (val: any, index?: number) => string;
   tooltipValueFormatter?: (val: any) => string;
   title?: string;
+  grid?: {
+    left?: number | string;
+    right?: number | string;
+    top?: number | string;
+    bottom?: number | string;
+    containLabel?: boolean;
+  };
   legendIsolate?: boolean;
 }
 
@@ -31,14 +45,37 @@ const BarChart: React.FC<BarChartProps> = (props) => {
     height,
     width,
     legendData,
+    loading,
     labelFormatter,
     tooltipValueFormatter,
     title,
+    grid,
     legendIsolate
   } = props;
   const { token } = theme.useToken();
   const chartRef = useRef<{ chart: any } | null>(null);
   const generateCoolColors = useCoolColors();
+
+  // ECharts reads the DOM width at init time; with a "100%" width it can pick
+  // up a stale/tiny value while the flex child's layout is still resolving,
+  // rendering every bar squeezed at the left edge until its internal (throttled)
+  // ResizeObserver corrects it ~100ms later — a visible blue-sliver flash. We
+  // measure the container ourselves via a callback ref (which fires during
+  // commit, before paint) and feed ECharts an explicit pixel width, so the very
+  // first render is already correct. No gating, so the chart mounts with no
+  // extra delay; the ResizeObserver keeps the width in sync afterwards.
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const [measuredWidth, setMeasuredWidth] = useState(0);
+  const measureRef = useCallback((node: HTMLDivElement | null) => {
+    resizeObserverRef.current?.disconnect();
+    if (!node) return;
+    setMeasuredWidth(node.clientWidth);
+    resizeObserverRef.current = new ResizeObserver(() => {
+      setMeasuredWidth(node.clientWidth);
+    });
+    resizeObserverRef.current.observe(node);
+  }, []);
+  useEffect(() => () => resizeObserverRef.current?.disconnect(), []);
 
   const dynamicColors = useMemo(
     () => generateCoolColors(seriesData.length),
@@ -100,7 +137,11 @@ const BarChart: React.FC<BarChartProps> = (props) => {
         data: processedData,
         type: 'bar',
         barMaxWidth: 20,
-        barMinWidth: 8,
+        // Keep a small floor only — a large barMinWidth would force wide bars
+        // when there are many categories (e.g. hourly buckets), squeezing out
+        // the category gap so bars look fused. A low floor lets barCategoryGap
+        // win, so even dense hourly views keep visible gaps.
+        barMinWidth: 2,
         barGap: '30%',
         barCategoryGap: '50%',
         ...(stack === false || stack === undefined ? {} : { stack }),
@@ -122,8 +163,9 @@ const BarChart: React.FC<BarChartProps> = (props) => {
         left: 0,
         right: 0,
         top: title ? 30 : 10,
-        bottom: 28,
-        containLabel: true
+        bottom: 8,
+        containLabel: true,
+        ...grid
       },
       tooltip: {
         trigger: 'axis',
@@ -254,16 +296,53 @@ const BarChart: React.FC<BarChartProps> = (props) => {
   }, [legendIsolate, seriesData, legendData]);
 
   if (!seriesData.length) {
-    return <div style={{ width: width || '100%', height }} />;
+    return (
+      <div
+        style={{
+          width: width || '100%',
+          height,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        {loading ? (
+          <Spin size="middle" />
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        )}
+      </div>
+    );
   }
 
   return (
-    <Chart
-      ref={chartRef as any}
-      options={options as any}
-      height={height}
-      width={width || '100%'}
-    />
+    <div
+      ref={measureRef}
+      style={{ width: width || '100%', height, position: 'relative' }}
+    >
+      <Chart
+        ref={chartRef as any}
+        options={options as any}
+        height={height}
+        width={measuredWidth || width || '100%'}
+      />
+      {loading && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 20,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'var(--ant-color-bg-container)',
+            opacity: 0.6,
+            pointerEvents: 'none'
+          }}
+        >
+          <Spin size="middle" />
+        </div>
+      )}
+    </div>
   );
 };
 

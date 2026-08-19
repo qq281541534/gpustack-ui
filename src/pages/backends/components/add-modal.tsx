@@ -1,7 +1,9 @@
 import { PageAction } from '@/config';
 import { PageActionType } from '@/config/types';
+import useSubmitLock from '@/hooks/use-submit-lock';
 import {
   AlertBlockInfo,
+  ColumnWrapper,
   GSDrawer,
   IconFont,
   ModalFooter,
@@ -12,7 +14,6 @@ import { Tabs } from 'antd';
 import _ from 'lodash';
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
-import ColumnWrapper from '../../_components/column-wrapper';
 import {
   BackendSourceValueMap,
   builtInBackendFields,
@@ -63,6 +64,7 @@ const AddModal: React.FC<AddModalProps> = (props) => {
   const [yamlContent, setYamlContent] = useState<string>('');
   const [formContent, setFormContent] = useState<FormData>({} as FormData);
   const alertRef = useRef<HTMLDivElement>(null);
+  const { loading, guard, run, release } = useSubmitLock();
 
   const showVersionCustomSuffix =
     currentData?.backend_source === BackendSourceValueMap.BUILTIN ||
@@ -92,17 +94,22 @@ const AddModal: React.FC<AddModalProps> = (props) => {
   };
 
   const onOk = () => {
-    if (activeKey === 'yaml') {
-      const content = editorRef.current?.getContent();
-      if (content) {
-        onSubmitYaml({ content: content });
+    guard(() => {
+      if (activeKey === 'yaml') {
+        const content = editorRef.current?.getContent();
+        if (!content) {
+          // nothing to submit — drop the lock so the button stays usable
+          release();
+          return;
+        }
+        run(() => onSubmitYaml({ content: content }));
+        return;
       }
-    } else {
       formRef.current?.submit();
-    }
+    });
   };
 
-  const onFinish = (values: FormData) => {
+  const onFinish = async (values: FormData) => {
     const versionConfigs = values.version_configs?.reduce(
       (acc: Record<string, any>, curr) => {
         if (curr.version_no) {
@@ -117,12 +124,15 @@ const AddModal: React.FC<AddModalProps> = (props) => {
 
     const defaultVersion = values.version_configs?.find((v) => v.is_default);
 
-    onSubmit({
-      ...values,
-      default_version: defaultVersion?.version_no || '',
-      // @ts-ignore
-      version_configs: versionConfigs
-    });
+    await run(() =>
+      onSubmit({
+        ...values,
+        parameter_format: values.parameter_format || null,
+        default_version: defaultVersion?.version_no || '',
+        // @ts-ignore
+        version_configs: versionConfigs
+      })
+    );
   };
 
   useEffect(() => {
@@ -155,6 +165,7 @@ const AddModal: React.FC<AddModalProps> = (props) => {
       return {
         ...values,
         backend_name: values.backend_name.replace(/-custom$/, ''),
+        parameter_format: values.parameter_format,
         version_configs: versionConfigs,
         built_in_version_configs: builtInVersions
       };
@@ -274,6 +285,7 @@ const AddModal: React.FC<AddModalProps> = (props) => {
             <ModalFooter
               onCancel={onClose}
               onOk={onOk}
+              loading={loading}
               style={ModalFooterStyle}
             ></ModalFooter>
           </>
@@ -290,6 +302,7 @@ const AddModal: React.FC<AddModalProps> = (props) => {
               children: (
                 <BackendForm
                   onFinish={onFinish}
+                  onFinishFailed={release}
                   action={action}
                   currentData={formContent as ListItem}
                   ref={formRef}

@@ -62,7 +62,7 @@ export default {
   'models.form.backend': 'Backend',
   'models.form.backend_parameters': 'Backend Parameters',
   'models.instance.params.configured': 'User Configured',
-  'models.instance.params.autoInjected': 'Auto-injected',
+  'models.instance.params.autoInjected': 'Auto-injected Parameters',
   'models.search.gguf.tips':
     'GGUF models use llama-box(supports Linux, macOS and Windows).',
   'models.search.vllm.tips':
@@ -290,5 +290,11 @@ export default {
   'models.instance.previousRun': 'Previous Run',
   'models.instance.startHistory': 'Run History',
   'models.instance.startHistory.tips':
-    'Shows logs from the run before the last error-triggered restart.'
+    'Shows logs from the run before the last error-triggered restart.',
+  'models.form.lora.label': 'LoRA Adapters',
+  'models.form.lora.add': 'Add LoRA Adapter',
+  'models.form.lora.select': 'Select LoRA',
+  'models.form.lora.name': 'LoRA name',
+  'models.form.lora.rule.empty': 'Input cannot be empty',
+  'models.form.lora.rule.duplicate': 'LoRA name cannot be duplicated'
 };

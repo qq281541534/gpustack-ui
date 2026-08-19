@@ -1,55 +1,54 @@
 import { PageAction } from '@/config';
 import { PageActionType } from '@/config/types';
+import useSubmitLock from '@/hooks/use-submit-lock';
+import useUserDirectory from '@/pages/gpu-service/hooks/use-user-directory';
 import Separator from '@/pages/llmodels/components/separator';
+import { getGPUStackPlugin } from '@/plugins';
 import { SearchOutlined } from '@ant-design/icons';
-import { ColumnWrapper, GSDrawer, ModalFooter } from '@gpustack/core-ui';
-import { useIntl } from '@umijs/max';
-import { Empty, Input, Typography } from 'antd';
+import {
+  AlertBlockInfo,
+  ColumnWrapper,
+  GSDrawer,
+  ModalFooter
+} from '@gpustack/core-ui';
+import { useIntl, useModel } from '@umijs/max';
+import { Input, Typography } from 'antd';
+import _ from 'lodash';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import styled from 'styled-components';
 import { ListItem as TemplateItem } from '../../templates/config/types';
 import useQueryTemplates from '../../templates/services/use-query-templates';
 import { FormData, InstanceTypeItem, ListItem } from '../config/types';
 import GPUServiceInstanceForm from '../forms';
-import TemplateSelector from '../forms/template-selector';
+import TemplateSelector, { TemplateGroup } from '../forms/template-selector';
 import useQueryInstanceTypes from '../services/use-query-instance-types';
+import styles from '../styles/instances.module.less';
 import InstanceTypeList from './instance-type-list';
-
-const Container = styled.div`
-  display: flex;
-  height: 100%;
-  min-height: 0;
-`;
-
-const ColWrapper = styled.div`
-  display: flex;
-  flex: 1;
-  max-width: 33%;
-  min-height: 0;
-`;
-
-const PanelBody = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  height: 100%;
-  min-height: 0;
-`;
-
-const FormWrapper = styled.div`
-  display: flex;
-  flex: 1;
-  max-width: 34%;
-  min-height: 0;
-`;
 
 type AddModalProps = {
   title: string;
   action: PageActionType;
   open: boolean;
+  width?: number | string;
+  realAction?: string;
+  clusterList?: Array<{
+    label: string;
+    value: number;
+    id: number;
+    owner_principal_id?: number;
+  }>;
   onOk: (values: FormData) => void;
   data?: ListItem | null;
   onCancel: () => void;
+};
+
+const matchKeyword = (fields: Array<unknown>, keyword: string) => {
+  const trimmed = keyword.trim().toLowerCase();
+  if (!trimmed) return true;
+  return fields.some((text) =>
+    String(text ?? '')
+      .toLowerCase()
+      .includes(trimmed)
+  );
 };
 
 const ColTitle: React.FC<{
@@ -82,140 +81,407 @@ const AddModal: React.FC<AddModalProps> = ({
   open,
   onOk,
   data,
-  onCancel
+  onCancel,
+  width,
+  clusterList = [],
+  realAction
 }) => {
   const intl = useIntl();
+  const { initialState } = useModel('@@initialState') || {};
+  const currentUser = initialState?.currentUser;
+  const pluginActive = !!getGPUStackPlugin();
+  const userDirectory = useUserDirectory(
+    !!currentUser?.is_admin && !pluginActive
+  );
   const form = useRef<any>(null);
-  const autoSelectedRef = useRef(false);
-  const [selectedInstanceType, setSelectedInstanceType] = useState<string>();
-  const [selectedManufacturer, setSelectedManufacturer] = useState<string>();
-  const [templateId, setTemplateId] = useState<number>();
+  const sessionRef = useRef(0);
+  const [instanceTypeSelection, setInstanceTypeSelection] = useState<{
+    instanceType?: string;
+    manufacturer?: string;
+  }>({
+    instanceType: undefined,
+    manufacturer: undefined
+  });
+  const [templateId, setTemplateId] = useState<number | undefined>();
   const [instanceKeyword, setInstanceKeyword] = useState('');
   const [templateKeyword, setTemplateKeyword] = useState('');
+  const { loading, guard, run, release } = useSubmitLock();
+  const [initialized, setInitialized] = useState(false);
 
   const {
-    detailData,
+    detailData: instanceTypeList,
     loading: instanceTypesLoading,
     fetchData
   } = useQueryInstanceTypes();
-  const { detailData: templatesData, fetchData: fetchTemplates } =
-    useQueryTemplates();
+  const {
+    detailData: templatesData,
+    loading: templateLoading,
+    fetchData: fetchTemplates
+  } = useQueryTemplates();
+  // Set by the create-scope picker (admin "All" view) via onScopeChange.
+  // undefined = no picker (org context) → no client-side scoping.
+  const [scopeOrgId, setScopeOrgId] = useState<number | null | undefined>(
+    undefined
+  );
+
+  const templateList = templatesData?.items || [];
+
+  // A GPU instance is scheduled on the chosen instance type's cluster, and
+  // its owner is that cluster's owner. So when a platform admin targets an
+  // org, restrict each instance type's candidates to clusters that org owns
+  // (dropping tiers/types left with none). Header-independent: filters the
+  // fetched list client-side, so it doesn't rely on the request scope.
+  const filterTypesByOwner = (
+    types: InstanceTypeItem[],
+    orgId?: number | null
+  ): InstanceTypeItem[] => {
+    if (orgId == null) return types;
+    const owned = new Set(
+      (clusterList || [])
+        .filter((c) => c.owner_principal_id === orgId)
+        .map((c) => c.id || c.value)
+    );
+    return types
+      .map((it) => ({
+        ...it,
+        status: {
+          ...it.status,
+          tiers: (it.status?.tiers ?? [])
+            .map((tier: any) => ({
+              ...tier,
+              candidates: (tier.candidates ?? []).filter((c: any) =>
+                owned.has(Number(c.cluster))
+              )
+            }))
+            .filter((tier: any) => (tier.candidates ?? []).length > 0)
+        }
+      }))
+      .filter((it) => (it.status?.tiers ?? []).length > 0);
+  };
+
+  const ownedInstanceTypes = useMemo(
+    () => filterTypesByOwner(instanceTypeList, scopeOrgId),
+
+    [instanceTypeList, clusterList, scopeOrgId]
+  );
+  // const readonly = action === PageAction.VIEW;
+  const readonly = false;
+  const isRecreate = realAction === PageAction.CREATE;
+  const showResourceSelectors = action === PageAction.CREATE || isRecreate;
+  const shouldAutoSelectResource = action === PageAction.CREATE && !isRecreate;
+
+  const findTemplateByManufacturer = (
+    manufacturer: string | undefined,
+    templates: TemplateItem[]
+  ) => {
+    return manufacturer
+      ? templates.find((t) => t.manufacturer === manufacturer)
+      : undefined;
+  };
+
+  const saveInstanceDataInDescription = (instanceType: InstanceTypeItem) => {
+    return JSON.stringify({
+      name: instanceType.name,
+      spec: {
+        ..._.omit(instanceType.spec, ['cache', 'cpu']),
+        cpu: _.pick(instanceType.spec?.cpu, [
+          'manufacturer',
+          'product',
+          'family'
+        ])
+      }
+    });
+  };
+
+  // GPU types carry their accelerator vendor; non-acceleratable (CPU) types
+  // all map to the single 'cpu' bucket used to match templates.
+  const manufacturerOf = (instanceType: InstanceTypeItem) =>
+    instanceType.spec.acceleratable ? instanceType.spec?.manufacturer : 'cpu';
+
+  // apply the selection of instance type and template
+  const applySelection = (
+    instanceType: InstanceTypeItem,
+    template: TemplateItem | undefined
+  ) => {
+    const manufacturer = manufacturerOf(instanceType);
+
+    setInstanceTypeSelection({
+      instanceType: instanceType.name,
+      manufacturer
+    });
+
+    setTemplateId(template?.id);
+
+    if (template) {
+      const formValues = form.current?.getFieldsValue();
+      form.current?.setFieldsValue({
+        description: saveInstanceDataInDescription(instanceType),
+        spec: {
+          ...formValues?.spec,
+          ...template.spec,
+          sshPublicKeys: formValues?.spec?.sshPublicKeys,
+          volume: {
+            ...formValues?.spec?.volume
+          }
+        }
+      });
+    } else {
+      form.current?.setFieldsValue({
+        description: saveInstanceDataInDescription(instanceType)
+      });
+    }
+    // update form
+    form.current?.applyInstanceType?.(instanceType);
+  };
+
+  // Drop the instance-type-derived selection + form state. Used when no
+  // candidate is available (empty segment / org with no clusters) so a stale
+  // type / cluster never survives a switch or reload.
+  const clearSelection = () => {
+    setInstanceTypeSelection({
+      instanceType: undefined,
+      manufacturer: undefined
+    });
+    setTemplateId(undefined);
+    form.current?.applyInstanceType?.(undefined);
+    form.current?.setFieldValue?.('clusterId', null);
+    form.current?.setFieldValue?.(['spec', 'type'], undefined);
+  };
+
+  const autoSelectFirst = (
+    types: InstanceTypeItem[],
+    templates: TemplateItem[]
+  ) => {
+    const first = types.find((item) => !item.disabled);
+    if (!first) {
+      clearSelection();
+      return;
+    }
+    applySelection(
+      first,
+      findTemplateByManufacturer(manufacturerOf(first), templates)
+    );
+  };
+
+  const findAggregateOf = (
+    candidateName: string | undefined,
+    clusterId: number | null | undefined,
+    instanceTypes: InstanceTypeItem[]
+  ): InstanceTypeItem | undefined => {
+    if (!candidateName) return undefined;
+    return instanceTypes.find((item) =>
+      (item.status?.tiers ?? []).some((tier) =>
+        (tier.candidates ?? []).some(
+          (c) => c.name === candidateName && Number(c.cluster) === clusterId
+        )
+      )
+    );
+  };
+
+  // initial for first
+  const applyAutoSelection = (
+    instanceTypes: InstanceTypeItem[],
+    templates: TemplateItem[],
+    orgId?: number | null
+  ) => {
+    // On edit / view, surface the persisted selection in the card list.
+    if (!shouldAutoSelectResource) {
+      const aggregate = findAggregateOf(
+        data?.spec?.type,
+        data?.clusterId,
+        instanceTypes
+      );
+      if (aggregate) {
+        setInstanceTypeSelection({
+          instanceType: aggregate.name,
+          manufacturer: manufacturerOf(aggregate)
+        });
+      }
+      return;
+    }
+
+    // Scope to clusters the chosen org owns (admin "All" view).
+    const owned = filterTypesByOwner(instanceTypes, orgId);
+
+    // On create, auto-select the first available instance type (clears the
+    // selection when the chosen org has none).
+    autoSelectFirst(owned, templates);
+  };
+
+  // Fetch the (tenant-scoped) instance types + templates and auto-select.
+  // The query hook cancels any in-flight request on each new call, so when
+  // this runs twice in quick succession (drawer open, then the scope
+  // picker settling on its default) the latest scope's result wins.
+  const loadCreateResources = async (orgId?: number | null) => {
+    const session = ++sessionRef.current;
+    try {
+      const [instanceResItems, templatesRes] = await Promise.all([
+        fetchData({ page: -1 }),
+        fetchTemplates({ page: -1 })
+      ]);
+      if (sessionRef.current !== session) return;
+      applyAutoSelection(
+        instanceResItems || [],
+        templatesRes?.items || [],
+        orgId
+      );
+      setInitialized(true);
+    } catch (error) {
+      setInitialized(true);
+    }
+  };
+
+  // Platform admin retargeted the create to another org (or Global). The
+  // instance-type / cluster offerings are tenant-scoped, so drop the
+  // current pick and reload for the new scope. The request interceptor
+  // already carries the new org header by the time this fires.
+  const handleScopeChange = (orgId?: number | null) => {
+    if (!open || action !== PageAction.CREATE) return;
+    setScopeOrgId(orgId);
+    // Drop the instance-type-derived selection + form state (the selected type
+    // card + its limits, the cluster, and spec.type). The cluster decides
+    // where the instance is scheduled, so a stale pick from the previous
+    // scope must not survive — otherwise an instance owned by the newly
+    // chosen org could land on the old org's cluster. The reload's
+    // owner-scoped auto-selection re-fills them from the new org, or leaves
+    // them empty (blocking submit) when the chosen org has no clusters.
+    clearSelection();
+    setInitialized(false);
+    loadCreateResources(orgId);
+  };
 
   useEffect(() => {
-    if (open) {
-      autoSelectedRef.current = false;
-      fetchData({});
-      fetchTemplates({ page: -1 });
-    } else {
-      setSelectedInstanceType(undefined);
-      setSelectedManufacturer(undefined);
+    if (!open) {
+      setInitialized(false);
+      sessionRef.current += 1;
+      setInstanceTypeSelection({
+        instanceType: undefined,
+        manufacturer: undefined
+      });
       setTemplateId(undefined);
       setInstanceKeyword('');
       setTemplateKeyword('');
+      setScopeOrgId(undefined);
+      return;
     }
-  }, [open, fetchData, fetchTemplates]);
 
-  const instanceTypeList = detailData?.items || [];
-  const templateList = templatesData?.items || [];
-
-  const filteredInstanceTypes = useMemo(() => {
-    const keyword = instanceKeyword.trim().toLowerCase();
-    if (!keyword) {
-      return instanceTypeList;
+    if (action === PageAction.CREATE) {
+      loadCreateResources();
     }
-    return instanceTypeList.filter((item) => {
-      const name = item.metadata?.name || '';
-      return [
-        name,
-        item.spec?.memory ?? '',
-        item.status?.cpu?.capacity ?? '',
-        item.status?.ram?.capacity ?? '',
-        item.status?.accelerator?.remaining ?? ''
-      ].some((text) => String(text).toLowerCase().includes(keyword));
-    });
-  }, [instanceKeyword, instanceTypeList]);
+  }, [open, shouldAutoSelectResource, action]);
 
-  const manufacturerMatchedTemplates = useMemo(() => {
-    console.log(
-      'Filtering templates by manufacturer:',
-      templateList,
-      selectedManufacturer
+  // filter instance types (already scoped to the chosen org's clusters)
+  const filteredInstanceTypes = ownedInstanceTypes.filter((item) =>
+    matchKeyword([item.name], instanceKeyword)
+  );
+
+  // No instance types for the chosen org (e.g. it owns no clusters), and not
+  // mid-fetch — drives the "no available instance type" message in the form.
+  const noAvailableInstanceTypes =
+    action === PageAction.CREATE &&
+    !instanceTypesLoading &&
+    ownedInstanceTypes.length === 0;
+
+  // filter templates based on selection and keyword
+  const filteredTemplates = templateList.filter((item) => {
+    if (
+      instanceTypeSelection.manufacturer &&
+      item.manufacturer !== instanceTypeSelection.manufacturer
+    ) {
+      return false;
+    }
+
+    return matchKeyword(
+      [item.name, item.spec?.image, item.spec?.volumeMount],
+      templateKeyword
     );
-    if (!selectedManufacturer) {
-      return templateList;
+  });
+
+  // Group the picker by owning scope so same-name templates stay
+  // distinguishable: the caller's own templates first, then the
+  // admin-curated Global presets, then — platform admin's cross-tenant
+  // view only — other users' templates, one group per owner.
+  //
+  // The default buckets below assume every non-Global owner is a USER
+  // principal. A plugin's principal model may scope templates to other
+  // owner kinds (no user-directory entry, not the caller's user id),
+  // which these buckets would mislabel — so a plugin can take over
+  // grouping via `hooks.useTemplateOwnerGroups`. The registry is wired
+  // at boot, so the conditional hook call is render-stable — same
+  // contract as `usePluginListColumns`' function entries.
+  const usePluginTemplateGroups = getGPUStackPlugin()?.hooks
+    ?.useTemplateOwnerGroups as
+    | ((items: TemplateItem[]) => TemplateGroup[])
+    | undefined;
+  const pluginTemplateGroups = usePluginTemplateGroups?.(filteredTemplates);
+
+  const templateGroups: TemplateGroup[] = useMemo(() => {
+    if (pluginTemplateGroups) {
+      return pluginTemplateGroups;
     }
-    return templateList.filter(
-      (item) => item.manufacturer === selectedManufacturer
-    );
-  }, [selectedManufacturer, templateList]);
-
-  const filteredTemplates = useMemo(() => {
-    const keyword = templateKeyword.trim().toLowerCase();
-    if (!keyword) {
-      return manufacturerMatchedTemplates;
+    if (pluginActive) {
+      // Plugin present but without the grouping hook (older plugin
+      // build): keep the flat list rather than mislabeling owners
+      // outside the USER-principal model.
+      return filteredTemplates.length
+        ? [{ key: 'all', label: null, items: filteredTemplates }]
+        : [];
     }
-    return manufacturerMatchedTemplates.filter((item) =>
-      [item.name, item.spec?.image, item.spec?.volumeMount].some((text) =>
-        (text || '').toLowerCase().includes(keyword)
-      )
-    );
-  }, [templateKeyword, manufacturerMatchedTemplates]);
+    const yours: TemplateItem[] = [];
+    const globals: TemplateItem[] = [];
+    const byOwner = new Map<number, TemplateItem[]>();
 
-  useEffect(() => {
-    if (!open) return;
-    if (action !== PageAction.CREATE) return;
-    if (autoSelectedRef.current) return;
-    if (!instanceTypeList.length) return;
-    if (!templatesData) return;
-
-    const firstInstanceType = instanceTypeList[0];
-    const manufacturer = firstInstanceType.spec?.manufacturer;
-    const name = firstInstanceType.metadata?.name;
-    const matchedTemplate = manufacturer
-      ? templateList.find((t) => t.manufacturer === manufacturer)
-      : templateList[0];
-
-    autoSelectedRef.current = true;
-    setSelectedInstanceType(name);
-    setSelectedManufacturer(manufacturer);
-    if (matchedTemplate) {
-      setTemplateId(matchedTemplate.id);
-    }
-
-    const applyToForm = () => {
-      const currentSpec = form.current?.getFieldsValue()?.spec || {};
-      const updatedSpec = {
-        ...currentSpec,
-        type: name,
-        resources: { ...(currentSpec.resources || {}), accelerator: '1' }
-      };
-
-      if (matchedTemplate) {
-        form.current?.setFieldsValue({
-          manufacturer: matchedTemplate.manufacturer,
-          spec: {
-            ...updatedSpec,
-            ...matchedTemplate.spec,
-            resources: {
-              ...(updatedSpec.resources || {}),
-              ...(matchedTemplate.spec?.resources || {})
-            }
-          }
-        });
+    filteredTemplates.forEach((item) => {
+      if (item.owner_principal_id == null) {
+        globals.push(item);
+      } else if (item.owner_principal_id === currentUser?.id) {
+        yours.push(item);
       } else {
-        form.current?.setFieldsValue({ spec: updatedSpec });
+        const list = byOwner.get(item.owner_principal_id) || [];
+        list.push(item);
+        byOwner.set(item.owner_principal_id, list);
       }
-    };
+    });
 
-    if (form.current) {
-      applyToForm();
-    } else {
-      queueMicrotask(applyToForm);
+    const groups: TemplateGroup[] = [];
+    if (yours.length) {
+      groups.push({
+        key: 'yours',
+        label: intl.formatMessage({ id: 'gpuservice.template.group.yours' }),
+        items: yours
+      });
     }
-  }, [open, action, instanceTypeList, templateList, templatesData]);
+    if (globals.length) {
+      groups.push({
+        key: 'global',
+        label: intl.formatMessage({ id: 'gpuservice.template.group.global' }),
+        items: globals
+      });
+    }
+    groups.push(
+      ...[...byOwner.entries()]
+        .map(([ownerId, items]) => ({
+          key: `owner-${ownerId}`,
+          // `#id` is a placeholder for the moment before the user
+          // directory resolves (the memo recomputes once it lands)
+          // and for the API-only case of a non-USER owner.
+          label: userDirectory.get(ownerId) || `#${ownerId}`,
+          items
+        }))
+        .sort((a, b) => String(a.label).localeCompare(String(b.label)))
+    );
+    return groups;
+  }, [
+    filteredTemplates,
+    currentUser?.id,
+    userDirectory,
+    intl,
+    pluginActive,
+    pluginTemplateGroups
+  ]);
 
   const handleSubmit = () => {
-    form.current?.submit();
+    guard(() => form.current?.submit());
   };
 
   const handleCancel = () => {
@@ -224,63 +490,37 @@ const AddModal: React.FC<AddModalProps> = ({
   };
 
   const onFinish = async (values: FormData) => {
-    onOk({
-      ...values
+    await run(async () => {
+      await onOk({
+        ...values
+      });
+      console.log('submit form values', values);
     });
   };
 
   const handleInstanceTypeChange = (item: InstanceTypeItem) => {
-    const name = item.metadata?.name;
-    const manufacturer = item.spec?.manufacturer;
-    setSelectedInstanceType(name);
-    setSelectedManufacturer(manufacturer);
-
-    const currentSpec = form.current?.getFieldsValue()?.spec || {};
-    const updatedSpec = {
-      ...currentSpec,
-      type: name,
-      resources: { ...(currentSpec.resources || {}), accelerator: '1' }
-    };
-
-    const currentTemplate = templateList.find((t) => t.id === templateId);
-    const isMatched =
-      !manufacturer ||
-      (!!currentTemplate && currentTemplate.manufacturer === manufacturer);
-
-    if (isMatched) {
-      form.current?.setFieldsValue({ spec: updatedSpec });
-      return;
-    }
-
-    const firstTemplate = templateList.find(
-      (t) => t.manufacturer === manufacturer
+    const template = findTemplateByManufacturer(
+      manufacturerOf(item),
+      templateList
     );
-
-    if (firstTemplate) {
-      setTemplateId(firstTemplate.id);
-      form.current?.setFieldsValue({
-        manufacturer: firstTemplate.manufacturer,
-        spec: {
-          ...updatedSpec,
-          ...firstTemplate.spec
-        }
-      });
-    } else {
-      setTemplateId(undefined);
-      form.current?.setFieldsValue({
-        manufacturer: undefined,
-        spec: updatedSpec
-      });
-    }
+    applySelection(item, template);
   };
 
   const handleTemplateChange = (id: number, item: TemplateItem) => {
     setTemplateId(id);
+    const formValues = form.current?.getFieldsValue();
     form.current?.setFieldsValue({
-      manufacturer: item.manufacturer,
       spec: {
-        ...form.current?.getFieldsValue()?.spec,
-        ...item.spec
+        ...formValues?.spec,
+        ...item.spec,
+        sshPublicKeys: formValues?.spec?.sshPublicKeys,
+        resources: {
+          ...formValues?.spec?.resources,
+          localStorage: item?.spec?.resources?.localStorage
+        },
+        volume: {
+          ...formValues?.spec?.volume
+        }
       }
     });
   };
@@ -297,114 +537,147 @@ const AddModal: React.FC<AddModalProps> = ({
       }}
       keyboard={false}
       styles={{
-        wrapper: { width: 'calc(100vw - 220px)' },
+        wrapper: { width: width || 'calc(100vw - 220px)' },
         body: { overflowY: 'hidden' }
       }}
       footer={false}
     >
-      <Container>
-        <ColWrapper>
-          <ColumnWrapper styles={{ container: { paddingBlock: 0 } }}>
-            <PanelBody>
-              <ColTitle style={{ paddingBottom: 0 }}>
-                {intl.formatMessage({ id: 'gpuservice.instance.types' })}
-              </ColTitle>
-              <div
-                style={{
-                  position: 'sticky',
-                  top: 0,
-                  zIndex: 10,
-                  backgroundColor: 'var(--ant-color-bg-elevated)'
-                }}
-              >
-                <Input
-                  allowClear
-                  prefix={<SearchOutlined className="text-tertiary" />}
-                  placeholder={intl.formatMessage({
-                    id: 'gpuservice.instance.search.type.placeholder'
-                  })}
-                  value={instanceKeyword}
-                  onChange={(e) => setInstanceKeyword(e.target.value)}
-                />
-              </div>
-              <InstanceTypeList
-                value={selectedInstanceType}
-                dataList={filteredInstanceTypes}
-                loading={instanceTypesLoading}
-                onChange={handleInstanceTypeChange}
-              />
-            </PanelBody>
-          </ColumnWrapper>
-          <Separator></Separator>
-        </ColWrapper>
-        <ColWrapper>
-          <ColumnWrapper styles={{ container: { paddingBlock: 0 } }}>
-            <PanelBody>
-              <ColTitle style={{ paddingBottom: 0 }}>
-                {intl.formatMessage({ id: 'gpuservice.instance.templates' })}
-              </ColTitle>
-              <div
-                style={{
-                  position: 'sticky',
-                  top: 0,
-                  zIndex: 10,
-                  backgroundColor: 'var(--ant-color-bg-elevated)'
-                }}
-              >
-                <Input
-                  allowClear
-                  prefix={<SearchOutlined className="text-tertiary" />}
-                  placeholder={intl.formatMessage({
-                    id: 'gpuservice.instance.search.template.placeholder'
-                  })}
-                  value={templateKeyword}
-                  onChange={(e) => setTemplateKeyword(e.target.value)}
-                />
-              </div>
-              {filteredTemplates.length > 0 ? (
-                <TemplateSelector
-                  value={templateId}
-                  dataList={filteredTemplates}
-                  onChange={handleTemplateChange}
-                />
-              ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              )}
-            </PanelBody>
-          </ColumnWrapper>
-          <Separator></Separator>
-        </ColWrapper>
-        <FormWrapper>
+      <div className={styles.container}>
+        {showResourceSelectors && (
+          <>
+            <div className={styles.colWrapper}>
+              <ColumnWrapper styles={{ container: { paddingBlock: 0 } }}>
+                <div className={styles.panelBody}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 16,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 10,
+                      backgroundColor: 'var(--ant-color-bg-elevated)'
+                    }}
+                  >
+                    <ColTitle style={{ paddingBottom: 0 }}>
+                      {intl.formatMessage({
+                        id: 'gpuservice.instance.types'
+                      })}
+                    </ColTitle>
+                    <Input
+                      allowClear
+                      prefix={<SearchOutlined className="text-tertiary" />}
+                      placeholder={intl.formatMessage({
+                        id: 'gpuservice.instance.search.type.placeholder'
+                      })}
+                      value={instanceKeyword}
+                      onChange={(e) => setInstanceKeyword(e.target.value)}
+                    />
+                  </div>
+                  <InstanceTypeList
+                    value={instanceTypeSelection.instanceType}
+                    dataList={filteredInstanceTypes}
+                    loading={instanceTypesLoading}
+                    onChange={handleInstanceTypeChange}
+                  />
+                </div>
+              </ColumnWrapper>
+              <Separator></Separator>
+            </div>
+            <div className={styles.colWrapper}>
+              <ColumnWrapper styles={{ container: { paddingBlock: 0 } }}>
+                <div className={styles.panelBody}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 16,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 10,
+                      backgroundColor: 'var(--ant-color-bg-elevated)'
+                    }}
+                  >
+                    <ColTitle style={{ paddingBottom: 0 }}>
+                      {intl.formatMessage({
+                        id: 'gpuservice.instance.templates'
+                      })}
+                    </ColTitle>
+                    <Input
+                      allowClear
+                      prefix={<SearchOutlined className="text-tertiary" />}
+                      placeholder={intl.formatMessage({
+                        id: 'gpuservice.instance.search.template.placeholder'
+                      })}
+                      value={templateKeyword}
+                      onChange={(e) => setTemplateKeyword(e.target.value)}
+                    />
+                  </div>
+                  <TemplateSelector
+                    value={templateId}
+                    loading={templateLoading || !initialized}
+                    groups={templateGroups}
+                    onChange={handleTemplateChange}
+                  />
+                </div>
+              </ColumnWrapper>
+              <Separator></Separator>
+            </div>
+          </>
+        )}
+        <div className={styles.formWrapper}>
           <ColumnWrapper
             styles={{ container: { paddingBlock: 0 } }}
             footer={
-              <ModalFooter
-                onOk={handleSubmit}
-                onCancel={handleCancel}
-                style={{
-                  padding: '16px 24px 8px',
-                  display: 'flex',
-                  justifyContent: 'flex-end'
-                }}
-              />
+              <>
+                {isRecreate && open && (
+                  <div style={{ marginInline: 24, paddingTop: 8 }}>
+                    <AlertBlockInfo
+                      type="warning"
+                      contentStyle={{ paddingInline: 0 }}
+                      message={intl.formatMessage({
+                        id: 'gpuservice.instance.recreate.confirm.content'
+                      })}
+                    />
+                  </div>
+                )}
+                <ModalFooter
+                  onOk={handleSubmit}
+                  onCancel={handleCancel}
+                  showOkBtn={!readonly}
+                  loading={loading}
+                  style={{
+                    padding: '16px 24px 8px',
+                    display: 'flex',
+                    justifyContent: 'flex-end'
+                  }}
+                />
+              </>
             }
           >
             <>
-              <ColTitle>
-                {intl.formatMessage({ id: 'common.title.config' })}
-              </ColTitle>
+              {action !== PageAction.EDIT && (
+                <ColTitle>
+                  {intl.formatMessage({ id: 'common.title.config' })}
+                </ColTitle>
+              )}
               <GPUServiceInstanceForm
                 ref={form}
                 action={action}
+                realAction={realAction}
                 currentData={data}
+                disabled={readonly}
                 onFinish={onFinish}
+                onFinishFailed={release}
+                onScopeChange={handleScopeChange}
                 open={open}
-                instanceTypeList={instanceTypeList}
+                instanceTypeList={ownedInstanceTypes}
+                noAvailableInstanceTypes={noAvailableInstanceTypes}
               />
             </>
           </ColumnWrapper>
-        </FormWrapper>
-      </Container>
+        </div>
+      </div>
     </GSDrawer>
   );
 };

@@ -1,67 +1,139 @@
 // columns.ts
 import { tableSorter } from '@/config/settings';
-import { getGPUStackPlugin } from '@/plugins';
+import { usePluginListColumns } from '@/plugins/list-extra-columns';
+import { DashboardOutlined } from '@ant-design/icons';
 import {
   AutoTooltip,
   DropdownButtons,
   IconFont,
-  icons
+  icons,
+  TextAttribute,
+  ThemeTag
 } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
-import { MenuProps, Tag } from 'antd';
+import { MenuProps, Tooltip } from 'antd';
 import { ColumnsType } from 'antd/lib/table';
 import dayjs from 'dayjs';
 import { useMemo } from 'react';
 import { ListItem } from '../config/types';
+import type { APIKeyConfigAction } from '../plugin';
 
-type APIKeyAction = Global.ActionItem<ListItem> & {
+type APIKeyAction = Omit<Global.ActionItem<ListItem>, 'disabled' | 'label'> & {
+  // Per-row callback (function) is the host's default; placeholders use a
+  // plain boolean to render the menu item grayed out unconditionally.
+  disabled?: boolean | ((record: ListItem) => boolean);
+  // ReactNode allowed so disabled placeholders can render a Tooltip-
+  // wrapped label (paired with `locale: false`).
+  label: string | React.ReactNode;
   onClick?: (record: ListItem) => void;
 };
+
+type RankedAction = APIKeyAction & { priority: number };
 
 interface ColumnsHookProps {
   handleSelect: (val: string, record: ListItem, item?: APIKeyAction) => void;
   sortOrder: string[];
-  is_admin?: boolean;
-  onIPConfig?: (record: ListItem) => void;
+  // Reveal the Creator column to callers who can see other users' keys
+  // (platform admin or current-Org owner). Members only see their own
+  // keys, so the column would be redundant for them.
+  showCreator?: boolean;
+  configActions?: APIKeyConfigAction[];
+  // Dispatches the click for a plugin-contributed dropdown entry to the
+  // controller `useCreate()` returned for that entry.
+  onConfigAction?: (actionKey: string, record: ListItem) => void;
 }
 
 const useModelsColumns = ({
   handleSelect,
   sortOrder,
-  is_admin,
-  onIPConfig
+  showCreator,
+  configActions = [],
+  onConfigAction
 }: ColumnsHookProps): ColumnsType<ListItem> => {
   const intl = useIntl();
+  const pluginCols = usePluginListColumns('apiKeys');
 
   const actionList = useMemo<APIKeyAction[]>(() => {
-    const list: APIKeyAction[] = [
+    // Built-ins use a step-of-10 priority scale so plugins have room
+    // to insert at any position (e.g. 5 before Edit, 15 between Edit
+    // and Delete, 25 after Delete). The final list is sorted purely
+    // by priority — Delete sits last by virtue of its higher number,
+    // not by a special-case for `danger`.
+    const builtIns: RankedAction[] = [
       {
         label: 'common.button.edit',
         key: 'edit',
-        icon: icons.EditOutlined
+        icon: icons.EditOutlined,
+        priority: 10
       },
       {
         label: 'common.button.delete',
         key: 'delete',
         icon: icons.DeleteOutlined,
-        props: { danger: true }
+        props: { danger: true },
+        priority: 20
       }
     ];
 
-    const ipConfigComponent = getGPUStackPlugin()?.APIKeyIPConfig?.form;
-    if (ipConfigComponent && onIPConfig) {
-      list.splice(1, 0, {
-        label: 'apikeys.button.ipConfig',
+    const fromPlugins: RankedAction[] = configActions.map((a) => ({
+      label: a.labelId,
+      key: a.key,
+      icon: a.icon,
+      priority: a.priority ?? 100,
+      props: a.danger ? { danger: true } : undefined,
+      onClick: (record: ListItem) => onConfigAction?.(a.key, record)
+    }));
+
+    // Show disabled placeholders for IP Access Control / Quota Limit in
+    // the OSS build only — when the enterprise plugin contributes the
+    // real entry under the same key, skip the placeholder so the live
+    // action takes over. Keeps the dropdown's surface area consistent
+    // between editions while making the upgrade path discoverable.
+    const pluginKeys = new Set(configActions.map((a) => a.key));
+    const enterpriseTooltip = intl.formatMessage({
+      id: 'common.enterprise.feature'
+    });
+    const enterprisePlaceholder = (labelId: string): React.ReactNode => (
+      <Tooltip title={enterpriseTooltip} placement="left">
+        <span style={{ display: 'inline-block' }}>
+          {intl.formatMessage({ id: labelId })}
+        </span>
+      </Tooltip>
+    );
+    const placeholders: RankedAction[] = [];
+    if (!pluginKeys.has('ipConfig')) {
+      placeholders.push({
         key: 'ipConfig',
+        label: enterprisePlaceholder('apikeys.button.ipConfig'),
+        locale: false,
         icon: <IconFont type="icon-safe-ip" />,
-        onClick: (record: ListItem) => onIPConfig(record)
+        disabled: true,
+        priority: 12
+      });
+    }
+    if (!pluginKeys.has('quotaLimit')) {
+      placeholders.push({
+        key: 'quotaLimit',
+        label: enterprisePlaceholder('quotaLimits.button.title'),
+        locale: false,
+        icon: <DashboardOutlined />,
+        disabled: true,
+        priority: 14
       });
     }
 
-    return list;
-  }, [onIPConfig]);
+    return [...builtIns, ...fromPlugins, ...placeholders].sort(
+      (a, b) => a.priority - b.priority
+    );
+  }, [intl, configActions, onConfigAction]);
 
   return useMemo(() => {
+    const pluginRendered = pluginCols.map((c) => ({
+      title: intl.formatMessage({ id: c.titleId }),
+      key: c.key,
+      ellipsis: { showTitle: false },
+      render: (_text: any, record: ListItem) => c.render(record)
+    }));
     return [
       {
         title: intl.formatMessage({ id: 'common.table.name' }),
@@ -69,42 +141,23 @@ const useModelsColumns = ({
         key: 'name',
         sorter: tableSorter(1),
         render: (text: string, record: ListItem) => (
-          <span className="flex items-center">
+          <span className="flex items-center gap-8">
             <AutoTooltip ghost style={{ maxWidth: 400 }} title={text}>
               <span className="text-primary">{text}</span>
             </AutoTooltip>
             {record.is_custom && (
-              <Tag
-                style={{
-                  marginLeft: 8,
-                  borderRadius: 12,
-                  color: 'var(--ant-color-text-tertiary)',
-                  borderColor: 'var(--ant-color-split)',
-                  backgroundColor: 'transparent'
-                }}
-                variant="outlined"
-              >
+              <TextAttribute>
                 {intl.formatMessage({ id: 'playground.params.custom' })}
-              </Tag>
+              </TextAttribute>
             )}
           </span>
         )
       },
+      ...pluginRendered,
       {
         title: intl.formatMessage({ id: 'apikeys.table.key' }),
         dataIndex: 'masked_value',
         key: 'masked_value',
-        render: (text: string, record: ListItem) => (
-          <AutoTooltip ghost style={{ maxWidth: 200 }}>
-            {text || '-'}
-          </AutoTooltip>
-        )
-      },
-      {
-        title: intl.formatMessage({ id: 'users.table.username' }),
-        dataIndex: 'user_name',
-        key: 'user_name',
-        hidden: !is_admin,
         render: (text: string, record: ListItem) => (
           <AutoTooltip ghost style={{ maxWidth: 200 }}>
             {text || '-'}
@@ -143,26 +196,13 @@ const useModelsColumns = ({
             )}
             {(record.scope?.includes('inference') ||
               record.scope?.includes('*')) && (
-              <div
-                style={{
-                  border: '1px solid var(--ant-color-split)',
-                  color: 'var(--ant-color-text-tertiary)',
-                  backgroundColor: 'var(--ant-color-fill-quaternary)',
-                  borderRadius: 4,
-                  fontSize: 13,
-                  paddingInline: 8,
-                  flexGrow: 0,
-                  maxWidth: '100%',
-                  width: 'max-content',
-                  display: 'flex'
-                }}
-              >
+              <ThemeTag>
                 <AutoTooltip ghost>
                   {record.allowed_model_names?.length
                     ? record.allowed_model_names.join(', ')
                     : intl.formatMessage({ id: 'apikeys.models.all' })}
                 </AutoTooltip>
-              </div>
+              </ThemeTag>
             )}
           </div>
         )
@@ -176,6 +216,17 @@ const useModelsColumns = ({
         },
         render: (text: string, record: ListItem) => (
           <AutoTooltip ghost>{text}</AutoTooltip>
+        )
+      },
+      {
+        title: intl.formatMessage({ id: 'common.table.creator' }),
+        dataIndex: 'user_name',
+        key: 'user_name',
+        hidden: !showCreator,
+        render: (text: string) => (
+          <AutoTooltip ghost style={{ maxWidth: 200 }}>
+            {text || '-'}
+          </AutoTooltip>
         )
       },
       {
@@ -207,7 +258,7 @@ const useModelsColumns = ({
         )
       }
     ];
-  }, [intl, is_admin, handleSelect, actionList]);
+  }, [intl, showCreator, handleSelect, actionList, pluginCols]);
 };
 
 export default useModelsColumns;

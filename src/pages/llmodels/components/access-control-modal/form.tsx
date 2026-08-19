@@ -6,7 +6,7 @@ import { getGPUStackPlugin } from '@/plugins';
 import { DownOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import {
   AlertBlockInfo,
-  TooltipList,
+  CardRadioGroup,
   Transfer as TransferInner
 } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
@@ -15,9 +15,8 @@ import {
   Dropdown,
   DropdownProps,
   Empty,
+  Flex,
   Form,
-  Radio,
-  RadioChangeEvent,
   Tooltip
 } from 'antd';
 import {
@@ -33,6 +32,16 @@ import { queryModelAccessUserList } from '../../apis';
 import { AccessControlFormData } from '../../config/types';
 
 type TransferKey = string | number | bigint;
+
+// The "specific users" policy is now ALLOWED_PRINCIPALS with a
+// user-only grant list — the same value the principal-based override
+// (when a plugin provides one) uses, so the two interoperate.
+// `allowed_users` is the deprecated value released in v2.1.x; normalize
+// it so legacy routes still select the "specific users" radio (they
+// converge to ALLOWED_PRINCIPALS on save).
+export const ALLOWED_PRINCIPALS_POLICY = 'allowed_principals';
+const normalizeAccessPolicy = (p?: string) =>
+  p === 'allowed_users' ? ALLOWED_PRINCIPALS_POLICY : p;
 
 const buildAccessScopeTips = (
   override?: AllowedUsersOverride,
@@ -70,9 +79,9 @@ const Label = styled.div`
   align-items: center;
   gap: 4px;
   font-weight: 500;
-  margin-block: 8px 12px;
-  font-size: 14px;
-  color: var(--ant-color-text-tertiary);
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--ant-color-text-secondary);
 `;
 
 interface AccessControlFormProps {
@@ -93,6 +102,14 @@ type AllowedUsersOverride = {
   labelId: string;
   tipsId?: string;
   Field: React.ComponentType<{
+    form: any;
+    routeId?: number;
+    action: PageActionType;
+  }>;
+  // Optional trigger (e.g. an "Add" button) rendered by the host in its
+  // own layout slot while `Field` renders the body. Same props as Field
+  // so the plugin can gate visibility on action/routeId.
+  Action?: React.ComponentType<{
     form: any;
     routeId?: number;
     action: PageActionType;
@@ -213,10 +230,8 @@ const AccessControlForm = forwardRef((props: AccessControlFormProps, ref) => {
     }
   };
 
-  const handleOnPolicyChange = async (e: RadioChangeEvent) => {
-    console.log('policy changed:', e.target.value);
-    const policy = e.target.value;
-    if (policy === 'allowed_users') {
+  const handleOnPolicyChange = async (policy: string) => {
+    if (policy === ALLOWED_PRINCIPALS_POLICY) {
       form.setFieldsValue({ users: formDataCacheRef.current?.users || [] });
     } else {
       formDataCacheRef.current = {
@@ -256,16 +271,31 @@ const AccessControlForm = forwardRef((props: AccessControlFormProps, ref) => {
         // server's authoritative value, which is what survives a save
         // when the parent list hasn't been refreshed.
         form.setFieldsValue({
-          access_policy: currentData?.access_policy
+          access_policy: normalizeAccessPolicy(currentData?.access_policy)
         });
         queryModelAccessUserList(currentData.id).then((res) => {
-          const keys = res.items.map((item) => item.id);
-          setTargetKeys(keys);
+          // Fall back to the legacy `items` (USER-only) field when an
+          // older backend doesn't return `principals` yet.
+          const principals =
+            res.principals ??
+            res.items?.map((item) => ({
+              principal_type: 'user',
+              principal_id: item.id
+            })) ??
+            [];
+          // Derive the user picker's selection from the unified
+          // `principals` set (USER-kind subset), not the deprecated
+          // `items` field. `principals` is also kept whole so a save can
+          // preserve any non-user grants it doesn't manage.
+          const userKeys = principals
+            .filter((p) => p.principal_type === 'user')
+            .map((p) => p.principal_id);
+          setTargetKeys(userKeys);
 
           let hasAdmin = false;
           let hasInactive = false;
 
-          for (const key of keys) {
+          for (const key of userKeys) {
             const user = userMap.get(key);
             if (!user) continue;
             if (user.is_admin) hasAdmin = true;
@@ -280,8 +310,14 @@ const AccessControlForm = forwardRef((props: AccessControlFormProps, ref) => {
           setFilterInUsers(filterSet);
 
           form.setFieldsValue({
-            access_policy: res.access_policy ?? currentData.access_policy,
-            users: res.items.map((item) => ({ id: item.id }))
+            access_policy: normalizeAccessPolicy(
+              res.access_policy ?? currentData.access_policy
+            ),
+            users: userKeys.map((id) => ({ id })),
+            // Keep the full grant set: read by the principal-based
+            // override Field, and used on save to preserve non-user
+            // grants when the user picker submits `principals`.
+            principals
           });
         });
       } else {
@@ -340,7 +376,11 @@ const AccessControlForm = forwardRef((props: AccessControlFormProps, ref) => {
   return (
     <Form
       form={form}
-      onFinish={onFinish}
+      // Submit the full field store (getFieldsValue(true)), not just the
+      // registered fields onFinish would pass: the principal-based
+      // override Field manages `principals` via setFieldsValue without a
+      // registered Form.Item, so it would otherwise be dropped on save.
+      onFinish={() => onFinish(form.getFieldsValue(true))}
       preserve={true}
       clearOnDestroy={true}
       scrollToFirstError={true}
@@ -356,33 +396,29 @@ const AccessControlForm = forwardRef((props: AccessControlFormProps, ref) => {
             : undefined
       }}
     >
-      <Label>
-        {intl.formatMessage({ id: 'models.table.accessScope' })}
-        <Tooltip
-          title={
-            <TooltipList
-              list={buildAccessScopeTips(
-                allowedUsersOverride,
-                prependedPolicies
-              )}
-            ></TooltipList>
-          }
-        >
-          <QuestionCircleOutlined />
-        </Tooltip>
-      </Label>
+      <Label>{intl.formatMessage({ id: 'models.table.accessScope' })}</Label>
 
-      <Form.Item<AccessControlFormData> name="access_policy" noStyle>
-        <Radio.Group
+      <Form.Item<AccessControlFormData>
+        name="access_policy"
+        style={{
+          marginBottom: 16
+        }}
+      >
+        <CardRadioGroup
           onChange={handleOnPolicyChange}
-          style={{ marginBottom: 12 }}
           options={[
             ...prependedPolicies.map((p) => ({
               label: intl.formatMessage({ id: p.labelId }),
+              description: intl.formatMessage({ id: p.tipsId ?? p.labelId }),
               value: p.policyValue
             })),
             {
-              label: intl.formatMessage({ id: 'models.accessSettings.authed' }),
+              label: intl.formatMessage({
+                id: 'models.accessSettings.authed'
+              }),
+              description: intl.formatMessage({
+                id: 'models.accessSettings.authed.tips'
+              }),
               value: 'authed'
             },
             allowedUsersOverride
@@ -390,23 +426,52 @@ const AccessControlForm = forwardRef((props: AccessControlFormProps, ref) => {
                   label: intl.formatMessage({
                     id: allowedUsersOverride.labelId
                   }),
+                  description: intl.formatMessage({
+                    id:
+                      allowedUsersOverride.tipsId ??
+                      'models.accessSettings.allowedUsers.tips'
+                  }),
                   value: allowedUsersOverride.policyValue
                 }
               : {
                   label: intl.formatMessage({
                     id: 'models.accessSettings.allowedUsers'
                   }),
-                  value: 'allowed_users'
+                  description: intl.formatMessage({
+                    id: 'models.accessSettings.allowedUsers.tips'
+                  }),
+                  value: ALLOWED_PRINCIPALS_POLICY
                 },
             {
               label: intl.formatMessage({
                 id: 'models.accessSettings.public'
               }),
+              description: intl.formatMessage({
+                id: 'models.accessSettings.public.desc'
+              }),
               value: 'public'
             }
           ]}
-        ></Radio.Group>
+        />
       </Form.Item>
+      {allowedUsersOverride?.Action && accessPolicy === overridePolicyValue && (
+        <Flex
+          justify="space-between"
+          align="center"
+          style={{ marginBottom: 8 }}
+        >
+          <Label style={{ marginBottom: 0 }}>
+            {intl.formatMessage({
+              id: 'models.accessSettings.grantedPrincipals'
+            })}
+          </Label>
+          <allowedUsersOverride.Action
+            form={form}
+            routeId={currentData?.id}
+            action={action}
+          />
+        </Flex>
+      )}
       {accessPolicy === 'public' && (
         <div style={{ marginBlock: '16px 12px' }}>
           <AlertBlockInfo
@@ -414,6 +479,13 @@ const AccessControlForm = forwardRef((props: AccessControlFormProps, ref) => {
             message={intl.formatMessage({
               id: 'models.accessSettings.public.tips'
             })}
+            overlayScrollerProps={{
+              styles: {
+                wrapper: {
+                  paddingLeft: 0
+                }
+              }
+            }}
           ></AlertBlockInfo>
         </div>
       )}
@@ -424,15 +496,14 @@ const AccessControlForm = forwardRef((props: AccessControlFormProps, ref) => {
           action={action}
         />
       )}
-      {allowedUsersOverride &&
-        accessPolicy === overridePolicyValue && (
-          <allowedUsersOverride.Field
-            form={form}
-            routeId={currentData?.id}
-            action={action}
-          />
-        )}
-      {!allowedUsersOverride && accessPolicy === 'allowed_users' && (
+      {allowedUsersOverride && accessPolicy === overridePolicyValue && (
+        <allowedUsersOverride.Field
+          form={form}
+          routeId={currentData?.id}
+          action={action}
+        />
+      )}
+      {!allowedUsersOverride && accessPolicy === ALLOWED_PRINCIPALS_POLICY && (
         <>
           <Label>
             {intl.formatMessage({ id: 'models.table.userSelection' })}

@@ -1,7 +1,7 @@
 import { PageActionType } from '@/config/types';
-import { ModalFooter } from '@gpustack/core-ui';
+import useSubmitLock from '@/hooks/use-submit-lock';
+import { FormDrawer, ModalFooter } from '@gpustack/core-ui';
 import { useRef } from 'react';
-import FormDrawer from '../../../_components/form-drawer';
 import { FormData, ListItem } from '../config/types';
 import GPUServiceTemplateForm from '../forms';
 
@@ -23,9 +23,10 @@ const AddModal: React.FC<AddModalProps> = ({
   onCancel
 }) => {
   const form = useRef<any>(null);
+  const { loading, guard, run, release } = useSubmitLock();
 
   const handleSubmit = () => {
-    form.current?.submit();
+    guard(() => form.current?.submit());
   };
 
   const handleCancel = () => {
@@ -34,9 +35,11 @@ const AddModal: React.FC<AddModalProps> = ({
   };
 
   const onFinish = async (values: FormData) => {
-    onOk({
-      ...values
-    });
+    await run(() =>
+      onOk({
+        ...values
+      })
+    );
   };
 
   return (
@@ -50,6 +53,7 @@ const AddModal: React.FC<AddModalProps> = ({
         <ModalFooter
           onOk={handleSubmit}
           onCancel={handleCancel}
+          loading={loading}
           style={{
             padding: '16px 24px 8px',
             display: 'flex',
@@ -63,6 +67,7 @@ const AddModal: React.FC<AddModalProps> = ({
         action={action}
         currentData={currentData}
         onFinish={onFinish}
+        onFinishFailed={release}
         open={open}
       />
     </FormDrawer>

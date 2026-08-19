@@ -20,13 +20,15 @@ export interface LoginKit {
   };
   useSSOAuth: (opts: any) => {
     options: {
-      saml: boolean;
-      oidc: boolean;
+      // Active external auth provider (e.g. ``{type: "CAS", login_url:
+      // "/auth/cas/login"}``) or ``null`` when only local login is
+      // configured. The login UI renders an SSO button only when this
+      // is non-null and navigates to ``login_url``.
+      external_auth: { type: string; login_url: string } | null;
       first_time_setup: boolean;
       get_initial_password_command: string;
     };
-    loginWithOIDC: () => void;
-    loginWithSAML: () => void;
+    loginWithExternalAuth: () => void;
   };
   userInfo: any;
   setUserInfo: (info: any) => void;
@@ -48,6 +50,35 @@ export interface LoginKit {
 export interface LoginPlugin {
   shouldUseCustomLogin?: (enterpriseSettings: any) => boolean;
   CustomLoginComponent?: ComponentType<{ kit: LoginKit }>;
+  /**
+   * Seam for plugins to override the default landing path after login.
+   * Returning a path overrides both the admin and non-admin defaults;
+   * returning null/undefined falls back to the built-in behavior.
+   */
+  resolveDefaultPath?: (
+    userInfo: any,
+    ctx: { request: <T = any>(url: string, options?: any) => Promise<T> }
+  ) => Promise<string | null | undefined> | string | null | undefined;
+  /**
+   * Lifecycle hook fired inside `fetchUserInfo` after the server
+   * confirms identity but before any caller (boot path, LoginForm)
+   * commits that identity to `initialState`.
+   *
+   * The host's access function is memoized on `initialState` and
+   * runs exactly once per commit. Plugins that maintain
+   * identity-scoped caches (e.g. an org context cache the access
+   * predicate reads from) MUST seed those caches synchronously
+   * here — any work that happens after the caller's
+   * `setInitialState` won't influence the access predicate until
+   * the next identity change.
+   *
+   * Errors thrown from the hook are swallowed and logged; they
+   * never block fetchUserInfo.
+   */
+  onUserFetched?: (
+    userInfo: any,
+    ctx: { request: <T = any>(url: string, options?: any) => Promise<T> }
+  ) => Promise<void> | void;
 }
 
 /**

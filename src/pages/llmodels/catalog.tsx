@@ -27,7 +27,7 @@ const Catalog: React.FC = () => {
   const {
     dataSource,
     queryParams,
-    handleSearch,
+    fetchData,
     handleQueryChange,
     loadMore,
     handleNameChange
@@ -111,6 +111,10 @@ const Catalog: React.FC = () => {
     navigate('/models/deployments');
   };
 
+  const handleSearch = () => {
+    fetchData({ query: { ...queryParams, page: 1 } });
+  };
+
   useEffect(() => {
     if (dataSource.loadend) {
       const getCatalogSource = async () => {
@@ -162,6 +166,7 @@ const Catalog: React.FC = () => {
           isFirst={!dataSource.loadend}
         ></CatalogList>
         <NoResult
+          minHeight="calc(100vh - 300px)"
           loading={dataSource.loading}
           loadend={dataSource.loadend}
           dataSource={dataSource.dataList}

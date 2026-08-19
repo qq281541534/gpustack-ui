@@ -177,10 +177,11 @@ const Benchmark: React.FC = () => {
     if (type !== 'Table') return;
     return (
       <NoResult
+        minHeight="calc(100vh - 300px)"
         loading={dataSource.loading}
         loadend={dataSource.loadend}
         dataSource={[]}
-        image={<IconFont type="icon-credential-outline" />}
+        image={<IconFont type="icon-speed" />}
         filters={_.omit(queryParams, ['sort_by'])}
         noFoundText={intl.formatMessage({
           id: 'noresult.benchmark.nofound'

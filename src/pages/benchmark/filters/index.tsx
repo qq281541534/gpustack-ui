@@ -1,4 +1,3 @@
-import { modelCategoriesMap } from '@/pages/llmodels/config';
 import { SearchOutlined } from '@ant-design/icons';
 import { BaseSelect, FilterForm } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
@@ -23,32 +22,19 @@ interface FilterFormContentProps {
   initialValues?: any;
   open?: boolean;
   ref?: any;
-  modelList?: Global.BaseOption<number, { categories: string[] }>[];
   onClose?: () => void;
   onClear?: () => void;
   onValuesChange: (values: any) => void;
 }
 
 const FilterFormContent: React.FC<FilterFormContentProps> = forwardRef(
-  (
-    { initialValues, onClose, onClear, onValuesChange, open, modelList },
-    ref
-  ) => {
+  ({ initialValues, onClose, onClear, onValuesChange, open }, ref) => {
     const intl = useIntl();
     const filterRef = useRef<any>(null);
 
     const handleOnValuesChange = (changedValues: any, allValues: any) => {
       onValuesChange?.(allValues);
     };
-
-    const modelOptions = modelList
-      ?.filter((item) => {
-        return item.categories?.includes(modelCategoriesMap.llm);
-      })
-      .map((item) => ({
-        label: item.label,
-        value: item.label
-      }));
 
     useImperativeHandle(ref, () => ({
       reset: () => {
@@ -60,7 +46,7 @@ const FilterFormContent: React.FC<FilterFormContentProps> = forwardRef(
       <FilterForm
         ref={filterRef}
         width={232}
-        contentHeight={'calc(100vh - 122px)'}
+        contentHeight={'calc(100vh - var(--app-banner-height, 0px) - 122px)'}
         open={open}
         onClose={onClose}
         onClear={onClear}
@@ -116,16 +102,17 @@ const FilterFormContent: React.FC<FilterFormContentProps> = forwardRef(
           </Form.Item>
           <Label>{intl.formatMessage({ id: 'benchmark.table.model' })}</Label>
           <Form.Item noStyle name="model_name">
-            {/* <PillButtonGroup
-            options={modelCategories.filter((item) => item.value)}
-          ></PillButtonGroup> */}
-            <BaseSelect
-              allowClear
+            <Input
+              prefix={
+                <SearchOutlined
+                  style={{ color: 'var(--ant-color-text-placeholder)' }}
+                ></SearchOutlined>
+              }
               placeholder={intl.formatMessage({
                 id: 'benchmark.table.filter.bymodel'
               })}
-              options={modelOptions}
-            ></BaseSelect>
+              allowClear
+            ></Input>
           </Form.Item>
         </Content>
       </FilterForm>

@@ -1,51 +1,67 @@
+import useCreatorColumn from '@/pages/gpu-service/hooks/use-creator-column';
+import { usePluginListColumns } from '@/plugins/list-extra-columns';
 import { AutoTooltip, DropdownButtons, StatusTag } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
 import type { ColumnsType } from 'antd/lib/table';
 import dayjs from 'dayjs';
 import { useMemo } from 'react';
-import {
-  rowActionList,
-  status,
-  StoragePhaseLabelMap,
-  StorageTypeLabelMap
-} from '../config';
+import { rowActionList, status, StoragePhaseLabelMap } from '../config';
 import { ListItem } from '../config/types';
 
 interface ColumnsHookProps {
   handleSelect: (val: string, record: ListItem) => void;
+  storageClassList: Global.BaseOption<string>[];
   sortOrder: string[];
 }
 
 const useStorageColumns = ({
   handleSelect,
+  storageClassList,
   sortOrder
 }: ColumnsHookProps): ColumnsType<ListItem> => {
   const intl = useIntl();
+  const pluginCols = usePluginListColumns('gpuStorage');
+  const creatorCols = useCreatorColumn<ListItem>('gpuStorage');
   return useMemo(() => {
+    const pluginRendered = pluginCols.map((c) => ({
+      title: intl.formatMessage({ id: c.titleId }),
+      key: c.key,
+      ellipsis: { showTitle: false },
+      render: (_text: any, record: ListItem) => c.render(record)
+    }));
     return [
       {
         title: intl.formatMessage({ id: 'common.table.name' }),
-        dataIndex: ['metadata', 'name'],
+        dataIndex: 'name',
         key: 'name',
-        sorter: false,
+        sorter: true,
         ellipsis: {
           showTitle: false
         },
-        render: (text: string) => (
-          <AutoTooltip ghost style={{ maxWidth: 360 }}>
-            <span className="text-primary">{text}</span>
+        render: (text: string, record: ListItem) => (
+          <AutoTooltip
+            ghost
+            style={{ maxWidth: 360 }}
+            title={<span>{record.displayName || text}</span>}
+          >
+            <span className="text-primary">{record.displayName || text}</span>
           </AutoTooltip>
         )
       },
+      ...pluginRendered,
       {
         title: intl.formatMessage({ id: 'common.table.type' }),
         dataIndex: ['spec', 'type'],
         key: 'type',
         sorter: false,
-        render: (value: string) =>
-          StorageTypeLabelMap[value]
-            ? intl.formatMessage({ id: StorageTypeLabelMap[value] })
-            : value || '-'
+        render: (value: string) => {
+          return (
+            <AutoTooltip ghost>
+              {storageClassList.find((item) => item.value === value)?.label ||
+                '-'}
+            </AutoTooltip>
+          );
+        }
       },
       {
         title: intl.formatMessage({ id: 'gpuservice.storage.capacity' }),
@@ -59,19 +75,24 @@ const useStorageColumns = ({
         dataIndex: ['status', 'phase'],
         key: 'status',
         sorter: false,
-        render: (value: string) => (
-          <StatusTag
-            statusValue={{
-              status: status[value],
-              text: StoragePhaseLabelMap[value] || value
-            }}
-          ></StatusTag>
-        )
+        render: (value: string, record: ListItem) =>
+          value ? (
+            <StatusTag
+              statusValue={{
+                status: status[value],
+                text: StoragePhaseLabelMap[value] || value,
+                message: record?.status?.phaseMessage || ''
+              }}
+            ></StatusTag>
+          ) : (
+            '-'
+          )
       },
+      ...creatorCols,
       {
         title: intl.formatMessage({ id: 'common.table.createTime' }),
-        dataIndex: ['metadata', 'creationTimestamp'],
-        key: 'creationTimestamp',
+        dataIndex: 'created_at',
+        key: 'created_at',
         sorter: false,
         ellipsis: {
           showTitle: false
@@ -94,7 +115,14 @@ const useStorageColumns = ({
         )
       }
     ];
-  }, [handleSelect, sortOrder, intl]);
+  }, [
+    handleSelect,
+    sortOrder,
+    storageClassList,
+    intl,
+    pluginCols,
+    creatorCols
+  ]);
 };
 
 export default useStorageColumns;
