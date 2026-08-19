@@ -15,7 +15,7 @@ import {
   ScrollerModal
 } from '@gpustack/core-ui';
 import { useIntl, useNavigate } from '@umijs/max';
-import { Button, Tag } from 'antd';
+import { Button, Flex, Tag } from 'antd';
 import _ from 'lodash';
 import { useEffect, useMemo } from 'react';
 import styled from 'styled-components';
@@ -79,6 +79,7 @@ const Tips = styled.div`
 const APITAG = styled(Tag)`
   border-radius: 12px;
   margin: 0;
+  width: fit-content;
   margin-left: 8px;
 `;
 
@@ -106,6 +107,10 @@ const ApiAccessInfo = ({ open, data, onClose }: ApiAccessInfoProps) => {
 
   const isRanker = useMemo(() => {
     return _.includes(data.categories, modelCategoriesMap.reranker);
+  }, [data]);
+
+  const isLLM = useMemo(() => {
+    return _.includes(data.categories, modelCategoriesMap.llm);
   }, [data]);
 
   const handleClose = () => {
@@ -145,7 +150,7 @@ const ApiAccessInfo = ({ open, data, onClose }: ApiAccessInfoProps) => {
           {intl.formatMessage({ id: 'models.table.button.apiAccessInfo' })}
         </span>
       }
-      width={600}
+      width={660}
       destroyOnHidden
       closable={true}
       mask={{
@@ -160,10 +165,15 @@ const ApiAccessInfo = ({ open, data, onClose }: ApiAccessInfoProps) => {
         <span className="label">
           {intl.formatMessage({ id: 'models.table.apiAccessInfo.endpoint' })}
         </span>
-        <span className="value">
-          <AutoTooltip ghost maxWidth={data.generic_proxy ? 400 : 240}>
-            {endPoint}
-          </AutoTooltip>
+        <Flex align="center" wrap>
+          <span
+            className="value"
+            style={{ display: 'flex', flex: 1, minWidth: 0 }}
+          >
+            <AutoTooltip ghost maxWidth={'100%'}>
+              {endPoint}
+            </AutoTooltip>
+          </span>
           {!data.generic_proxy && (
             <>
               <APITAG color="geekblue">
@@ -175,14 +185,16 @@ const ApiAccessInfo = ({ open, data, onClose }: ApiAccessInfoProps) => {
                       id: 'models.table.apiAccessInfo.openaiCompatible'
                     })}
               </APITAG>
-              <APITAG color="geekblue">
-                {intl.formatMessage({
-                  id: 'models.table.apiAccessInfo.anthropicCompatible'
-                })}
-              </APITAG>
+              {isLLM && (
+                <APITAG color="geekblue">
+                  {intl.formatMessage({
+                    id: 'models.table.apiAccessInfo.anthropicCompatible'
+                  })}
+                </APITAG>
+              )}
             </>
           )}
-        </span>
+        </Flex>
         <span className="copy-btn">
           <CopyButton text={endPoint} type="link" size="small"></CopyButton>
         </span>
@@ -191,32 +203,36 @@ const ApiAccessInfo = ({ open, data, onClose }: ApiAccessInfoProps) => {
             id: 'models.table.apiAccessInfo.modelName'
           })}
         </span>
-        <span className="value">
-          <AutoTooltip ghost maxWidth={300}>
-            {data.name}
-          </AutoTooltip>
-        </span>
+        <Flex align="center">
+          <span className="value">
+            <AutoTooltip ghost maxWidth={300}>
+              {data.name}
+            </AutoTooltip>
+          </span>
+        </Flex>
         <span className="copy-btn">
           <CopyButton text={data.name} type="link" size="small"></CopyButton>
         </span>
         <span className="label">
           {intl.formatMessage({ id: 'models.table.apiAccessInfo.apikey' })}
         </span>
-        <span className="value">
-          <CreateButton
-            type="link"
-            size="small"
-            onClick={() => navigate('/access-control/api-keys')}
-          >
-            {intl.formatMessage({
-              id: 'models.table.apiAccessInfo.gotoCreate'
-            })}
-            <IconFont
-              type="icon-external-link"
-              className="font-size-14"
-            ></IconFont>
-          </CreateButton>
-        </span>
+        <Flex align="center">
+          <span className="value">
+            <CreateButton
+              type="link"
+              size="small"
+              onClick={() => navigate('/access-control/api-keys')}
+            >
+              {intl.formatMessage({
+                id: 'models.table.apiAccessInfo.gotoCreate'
+              })}
+              <IconFont
+                type="icon-external-link"
+                className="font-size-14"
+              ></IconFont>
+            </CreateButton>
+          </span>
+        </Flex>
       </ApiAccessInfoWrapper>
       {data.generic_proxy && (
         <div style={{ marginTop: 12 }}>{GenericProxyCommandCode}</div>

@@ -45,7 +45,7 @@ const Title = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: var(--ant-color-bg-container);
+  background-color: var(--ant-color-bg-elevated);
   font-weight: 600;
   padding-top: 8px;
   padding-bottom: 8px;
@@ -276,7 +276,9 @@ const VersionsForm: React.FC<AddModalProps> = ({
                   key={name}
                   defaultOpen
                   styles={{
-                    body: collapseKey.has(name) ? { padding: 16 } : {},
+                    body: collapseKey.has(name)
+                      ? { paddingInline: 16, paddingBlock: '16px 0' }
+                      : {},
                     content: { paddingTop: 0 },
                     header: {
                       backgroundColor: 'unset'

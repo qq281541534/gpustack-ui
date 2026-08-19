@@ -4,6 +4,7 @@ import VersionInfo, { modalConfig } from '@/components/version-info';
 import externalLinks from '@/constants/external-links';
 import useBodyScroll from '@/hooks/use-body-scroll';
 import { logout } from '@/pages/login/apis';
+import { getGPUStackPlugin } from '@/plugins';
 import { useModel } from '@@/plugin-model';
 import {
   DiscordOutlined,
@@ -13,7 +14,7 @@ import {
 } from '@ant-design/icons';
 import { DropdownActions, IconFont } from '@gpustack/core-ui';
 import { history, useIntl, useNavigate } from '@umijs/max';
-import { Avatar, Button, Divider, Modal } from 'antd';
+import { Avatar, Divider, Modal } from 'antd';
 import { useAtom } from 'jotai';
 import { useMemo } from 'react';
 import styled from 'styled-components';
@@ -97,6 +98,7 @@ const CustomItem = styled.div`
 
 export const ExtraContent = (props: { isDarkTheme?: boolean }) => {
   const { isDarkTheme } = props;
+  const plugin = getGPUStackPlugin();
   const { saveScrollHeight, restoreScrollHeight } = useBodyScroll();
   const [modal, contextHolder] = Modal.useModal();
   const [version] = useAtom(GPUStackVersionAtom);
@@ -210,14 +212,14 @@ export const ExtraContent = (props: { isDarkTheme?: boolean }) => {
         key: 'settings',
         label: (
           <span className="flex flex-center">
-            <IconFont type="icon-settings-02" />
+            <IconFont type="icon-preferences" />
             <span className="m-l-8" style={{ marginLeft: 8 }}>
-              {intl?.formatMessage?.({ id: 'common.button.settings' })}
+              {intl?.formatMessage?.({ id: 'common.preferences' })}
             </span>
           </span>
         ),
         onClick: () => {
-          history.push('/profile');
+          history.push('/preferences');
         }
       }
     ]

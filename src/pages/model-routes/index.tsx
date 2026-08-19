@@ -1,5 +1,6 @@
 import { expandKeysAtom } from '@/atoms/clusters';
 import { registerRouteConfigAtom } from '@/atoms/routes';
+import PluginExtraFields from '@/components/plugin-extra-fields';
 import { PageAction } from '@/config';
 import { PaginationKey, TABLE_SORT_DIRECTIONS } from '@/config/settings';
 import useExpandedRowKeys from '@/hooks/use-expanded-row-keys';
@@ -20,7 +21,7 @@ import { useMemoizedFn } from 'ahooks';
 import { message } from 'antd';
 import { useAtom } from 'jotai';
 import _ from 'lodash';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PageBox from '../_components/page-box';
 import { queryModelsList } from '../llmodels/apis';
 import AccessControlModal from '../llmodels/components/access-control-modal';
@@ -44,8 +45,39 @@ import useOpenPlayground from './hooks/use-open-playground';
 import useRoutesColumns from './hooks/use-routes-columns';
 import useTargetSourceModels from './hooks/use-target-source-models';
 import useViewApIInfo from './hooks/use-view-api-info';
+import {
+  ModelRouteConfigActionMount,
+  getModelRouteConfigActions,
+  type ModelRouteConfigActionController
+} from './plugin';
 
 const ModelRoutes: React.FC = () => {
+  // Single source of truth for plugin data lifecycle. Every successful
+  // table fetch updates this atomically: `routeIds` mirrors the rows
+  // currently visible (so plugins can bulk-fetch per-row data without
+  // N round-trips), and `refreshToken` bumps so plugins refetch even
+  // when the id set is unchanged — e.g. an in-place save from the
+  // quota-limit drawer leaves the row set intact but invalidates the
+  // derived defaults map.
+  const [pluginContext, setPluginContext] = useState<{
+    routeIds: number[];
+    refreshToken: number;
+  }>({
+    routeIds: [],
+    refreshToken: 0
+  });
+
+  // Wraps `queryModelRoutes` so the plugin context updates in lockstep
+  // with the table data — no separate "bump after save" signal needed.
+  const fetchAPI = useMemoizedFn(async (params: any, options?: any) => {
+    const res = await queryModelRoutes(params, options);
+    setPluginContext((prev) => ({
+      routeIds: (res.items ?? []).map((r: ListItem) => r.id),
+      refreshToken: prev.refreshToken + 1
+    }));
+    return res;
+  });
+
   const {
     dataSource,
     rowSelection,
@@ -60,13 +92,13 @@ const ModelRoutes: React.FC = () => {
     handleNameChange
   } = useTableFetch<ListItem>({
     key: PaginationKey.Routes,
-    fetchAPI: queryModelRoutes,
+    fetchAPI,
     deleteAPI: deleteModelRoute,
     watch: true,
     API: MODEL_ROUTES,
     contentForDelete: 'menu.models.routes'
   });
-  const { watchDataList: allRouteTargets, deleteItemFromCache } =
+  const { watchDataList, setWatchDataList, deleteItemFromCache } =
     useWatchList(MODEL_ROUTE_TARGETS);
   const [expandAtom] = useAtom(expandKeysAtom);
   const {
@@ -89,12 +121,14 @@ const ModelRoutes: React.FC = () => {
     openAccessControlModalStatus
   } = useAccessControl();
   const { sourceModels, fetchSourceModels } = useTargetSourceModels();
-  const { handleOpenPlayGround } = useOpenPlayground();
+  const { handleOpenPlayGround, generateModelName } = useOpenPlayground();
   const { apiAccessInfo, openViewAPIInfo, closeViewAPIInfo } = useViewApIInfo();
   const [registerRouteConfig, setRegisterRouteConfig] = useAtom(
     registerRouteConfigAtom
   );
   const [modelList, setModelsList] = useState<Global.BaseOption<number>[]>([]);
+
+  console.log('dataSource', dataSource);
 
   useEffect(() => {
     const fetchModels = async () => {
@@ -182,7 +216,10 @@ const ModelRoutes: React.FC = () => {
     } else if (val === 'chat') {
       handleOpenPlayGround(row);
     } else if (val === 'api') {
-      openViewAPIInfo(row);
+      openViewAPIInfo({
+        ...row,
+        name: generateModelName(row)
+      });
     }
   });
 
@@ -254,6 +291,9 @@ const ModelRoutes: React.FC = () => {
         dataList={list}
         onSelect={onChildSelect}
         sourceModels={sourceModels}
+        gridTemplate={options.gridTemplate}
+        prefixWidth={options.prefixWidth}
+        columns={options.columns}
       />
     );
   };
@@ -276,7 +316,33 @@ const ModelRoutes: React.FC = () => {
     }
   }, [registerRouteConfig, dataSource.loadend]);
 
-  const columns = useRoutesColumns(handleSelect);
+  const configActions = useMemo(() => getModelRouteConfigActions(), []);
+
+  const controllersRef = useRef<
+    Record<string, ModelRouteConfigActionController>
+  >({});
+  const registerController = useCallback(
+    (key: string, controller: ModelRouteConfigActionController) => {
+      controllersRef.current[key] = controller;
+    },
+    []
+  );
+
+  const handleConfigAction = useMemoizedFn(
+    (actionKey: string, record: ListItem) => {
+      controllersRef.current[actionKey]?.openModal(record);
+    }
+  );
+
+  const handleConfigActionOk = useMemoizedFn(() => {
+    fetchData();
+  });
+
+  const columns = useRoutesColumns({
+    handleSelect,
+    configActions,
+    onConfigAction: handleConfigAction
+  });
 
   return (
     <>
@@ -295,12 +361,13 @@ const ModelRoutes: React.FC = () => {
         ></FilterBar>
         <TableProvider
           value={{
-            allChildren: allRouteTargets,
+            allChildren: watchDataList,
             setDisableExpand: setDisableExpand
           }}
         >
           <SealTable
             rowKey="id"
+            emptyMinHeight="calc(100vh - 300px)"
             loadChildren={loadChildrenData}
             sortDirections={TABLE_SORT_DIRECTIONS}
             expandedRowKeys={expandedRowKeys}
@@ -318,6 +385,7 @@ const ModelRoutes: React.FC = () => {
             expandable={true}
             empty={
               <NoResult
+                minHeight="calc(100vh - 300px)"
                 loading={dataSource.loading}
                 loadend={dataSource.loadend}
                 dataSource={dataSource.dataList}
@@ -368,6 +436,15 @@ const ModelRoutes: React.FC = () => {
         onClose={closeViewAPIInfo}
       ></APIAccessInfoModal>
       <DeleteModal ref={modalRef}></DeleteModal>
+      {configActions.map((action) => (
+        <ModelRouteConfigActionMount
+          key={action.key}
+          action={action}
+          registerController={registerController}
+          onOk={handleConfigActionOk}
+        />
+      ))}
+      <PluginExtraFields name="ModelRoutesPageGlobal" context={pluginContext} />
     </>
   );
 };

@@ -17,9 +17,10 @@ import useGPUColumns from '../hooks/use-gpu-columns';
 // inside.
 interface GPUListProps {
   clusterId?: number;
+  source?: 'clusterDetail';
 }
 
-const GPUList: React.FC<GPUListProps> = ({ clusterId }) => {
+const GPUList: React.FC<GPUListProps> = ({ clusterId, source }) => {
   const {
     dataSource,
     queryParams,
@@ -71,6 +72,7 @@ const GPUList: React.FC<GPUListProps> = ({ clusterId }) => {
     if (type !== 'Table') return;
     return (
       <NoResult
+        minHeight="calc(100vh - 300px)"
         loading={dataSource.loading}
         loadend={dataSource.loadend}
         dataSource={dataSource.dataList}
@@ -109,21 +111,26 @@ const GPUList: React.FC<GPUListProps> = ({ clusterId }) => {
           handleInputChange={handleNameChange}
           handleSelectChange={handleClusterChange}
           selectOptions={clusterList}
-          showSelect={!clusterId}
+          showSelect={source !== 'clusterDetail'}
+          widths={
+            source !== 'clusterDetail'
+              ? { select: 230, input: 230 }
+              : { input: 300 }
+          }
         ></FilterBar>
         <ConfigProvider renderEmpty={renderEmpty}>
           <Table
             columns={columns}
             sortDirections={TABLE_SORT_DIRECTIONS}
             showSorterTooltip={false}
-            tableLayout={'auto'}
+            scroll={{ x: 'max-content' }}
+            className={'scroll-table'}
             dataSource={dataSource.dataList}
             loading={{
               spinning: dataSource.loading,
               size: 'middle'
             }}
             rowKey="id"
-            scroll={{ x: 900 }}
             onChange={handleTableChange}
             pagination={{
               showSizeChanger: true,

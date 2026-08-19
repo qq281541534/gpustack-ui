@@ -13,3 +13,11 @@ export type RequestInterceptor = (
 ) => { url: string; options: Record<string, any> };
 
 export const extraRequestInterceptors: RequestInterceptor[] = [];
+
+export const getTenantHeaders = (
+  _method?: string
+): Record<string, string> => ({});
+
+export type ResponseInterceptor = (response: any) => any;
+
+export const extraResponseInterceptors: ResponseInterceptor[] = [];

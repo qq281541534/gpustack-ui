@@ -1,4 +1,4 @@
-import { PageContainerInner } from '@/pages/_components/page-box';
+import { HeaderLeft, usePageContentStyle } from '@/pages/_components/page-box';
 import { IconFont } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
 import { useMemoizedFn } from 'ahooks';
@@ -55,7 +55,8 @@ const LLModels: React.FC = () => {
         <Segmented
           shape="round"
           style={{
-            backgroundColor: 'var(--ant-color-fill-secondary)'
+            backgroundColor: 'var(--ant-color-fill-secondary)',
+            fontSize: 13
           }}
           size="middle"
           className="m-l-24 font-400"
@@ -104,15 +105,11 @@ const LLModels: React.FC = () => {
     };
   }, [activeKey]);
 
+  usePageContentStyle({ padding: 0 });
+
   return (
-    <PageContainerInner
-      leftContent={title}
-      styles={{
-        containerWrapper: {
-          padding: 0
-        }
-      }}
-    >
+    <>
+      <HeaderLeft>{title}</HeaderLeft>
       <DeploymentsContext.Provider
         value={{
           generateFormValues,
@@ -137,7 +134,7 @@ const LLModels: React.FC = () => {
           activeKey={activeKey}
         ></Tabs>
       </DeploymentsContext.Provider>
-    </PageContainerInner>
+    </>
   );
 };
 

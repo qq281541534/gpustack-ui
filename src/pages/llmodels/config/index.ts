@@ -196,21 +196,21 @@ export const status: any = {
 };
 
 export const MyModelsStatusValueMap = {
-  Inactive: 'stopped',
-  Degrade: 'not_ready',
-  Active: 'ready'
+  Stopped: 'stopped',
+  NotReady: 'not_ready',
+  Ready: 'ready'
 };
 
 export const MyModelsStatusMap = {
-  [MyModelsStatusValueMap.Inactive]: StatusMaps.inactive,
-  [MyModelsStatusValueMap.Degrade]: StatusMaps.error,
-  [MyModelsStatusValueMap.Active]: StatusMaps.success
+  [MyModelsStatusValueMap.Stopped]: StatusMaps.inactive,
+  [MyModelsStatusValueMap.NotReady]: StatusMaps.error,
+  [MyModelsStatusValueMap.Ready]: StatusMaps.success
 };
 
 export const MyModelsStatusLabelMap = {
-  [MyModelsStatusValueMap.Inactive]: 'models.mymodels.status.inactive',
-  [MyModelsStatusValueMap.Degrade]: 'models.mymodels.status.degrade',
-  [MyModelsStatusValueMap.Active]: 'models.mymodels.status.active'
+  [MyModelsStatusValueMap.Stopped]: 'models.mymodels.status.inactive',
+  [MyModelsStatusValueMap.NotReady]: 'models.mymodels.status.degrade',
+  [MyModelsStatusValueMap.Ready]: 'models.mymodels.status.active'
 };
 
 export const ScheduleValueMap = {
@@ -340,6 +340,34 @@ export const setbackendParameters = (data: any) => {
   return result;
 };
 
+// extract the key of a backend parameter.
+// supported formats: '--key', '--key=value', '--key value'
+export const getBackendParameterKey = (param: string): string => {
+  const trimmed = String(param).trim();
+  const matched = trimmed.match(/^([^=\s]+)/);
+  return matched ? matched[1] : trimmed;
+};
+
+// merge two backend_parameters lists and dedupe by key.
+// params from `priorityParams` (e.g. defaultSpec) win over `baseParams`.
+export const mergeBackendParameters = (
+  baseParams: string[] = [],
+  priorityParams: string[] = []
+): string[] => {
+  const safeBase = baseParams || [];
+  const safePriority = priorityParams || [];
+
+  const priorityKeys = new Set(
+    safePriority.map((param) => getBackendParameterKey(param))
+  );
+
+  const filteredBase = safeBase.filter(
+    (param) => !priorityKeys.has(getBackendParameterKey(param))
+  );
+
+  return [...filteredBase, ...safePriority];
+};
+
 export const modelLabels = [
   { label: 'Image', value: 'image_only' },
   { label: 'Text-to-speech', value: 'text_to_speech' },
@@ -427,7 +455,7 @@ export const getBackendParamsTips = (backend: string) => {
     return {
       backend: 'SGLang',
       releases: '',
-      link: 'https://docs.sglang.ai/advanced_features/server_arguments.html',
+      link: 'https://docs.sglang.io/docs/advanced_features/server_arguments',
       version: 'v0.5.4'
     };
   }

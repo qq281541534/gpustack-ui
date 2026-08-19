@@ -77,7 +77,7 @@ export default function useAddResource(options?: { onCreated?: () => void }) {
   }, [resourceAtom, loadingStatus]);
 
   const contentInfo = useMemo(() => {
-    if (!resourceCount.cluster_count) {
+    if (!resourceCount?.cluster_count) {
       return {
         title: intl.formatMessage({ id: 'noresult.cluster.title' }),
         subTitle: intl.formatMessage({ id: 'noresult.resources.cluster' }),
@@ -98,13 +98,13 @@ export default function useAddResource(options?: { onCreated?: () => void }) {
   const handleCreate = () => {
     setHideModalTemporarily(true);
     onCreated?.();
-    if (!resourceCount.cluster_count) {
+    if (!resourceCount?.cluster_count) {
       setClusterSession({
         firstAddWorker: false,
         firstAddCluster: true
       });
 
-      navigate(`/cluster-management/clusters/list`);
+      navigate(`/resources/clusters/list`);
       return;
     }
 
@@ -113,7 +113,7 @@ export default function useAddResource(options?: { onCreated?: () => void }) {
         firstAddWorker: true,
         firstAddCluster: false
       });
-      navigate(`/cluster-management/clusters/list`);
+      navigate(`/resources/clusters/list`);
     }
   };
 

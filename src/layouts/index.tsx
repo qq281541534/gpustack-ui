@@ -1,6 +1,8 @@
 import { routeCacheAtom, setRouteCache } from '@/atoms/route-cache';
 import { userAtom } from '@/atoms/user';
 import DarkMask from '@/components/dark-mask';
+import '@/components/iconfont/iconfont.js';
+import PluginExtraFields from '@/components/plugin-extra-fields';
 import routeCachekey from '@/config/route-cachekey';
 import { DEFAULT_ENTER_PAGE, GPUSTACK_API_BASE_URL } from '@/config/settings';
 import { COLOR_PRIMARY } from '@/config/theme';
@@ -10,6 +12,7 @@ import useUserSettings from '@/hooks/use-user-settings';
 import useUserSettingsStorage from '@/hooks/use-user-settings-storage';
 import useAddResource from '@/pages/dashboard/hooks/use-add-resource';
 import { logout } from '@/pages/login/apis';
+import { didInitialStateProbe, probeAccessFlags } from '@/utils/access-probes';
 import {
   readColumnSettings,
   readState,
@@ -19,12 +22,9 @@ import {
 import { useAccessMarkedRoutes } from '@@/plugin-access';
 import { useModel } from '@@/plugin-model';
 import { ProLayout } from '@ant-design/pro-components';
+import { CoreUIProvider, IconFont } from '@gpustack/core-ui';
 import {
-  CoreUIProvider,
-  IconFont,
-  useOverlayScroller
-} from '@gpustack/core-ui';
-import {
+  Access,
   Outlet,
   dropByCacheKey,
   getAllLocales,
@@ -42,7 +42,7 @@ import {
 import { Button, ConfigProvider, Modal, theme } from 'antd';
 import { useAtom } from 'jotai';
 import 'overlayscrollbars/overlayscrollbars.css';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { PageContainerInner } from '../pages/_components/page-box';
 import Exception from './Exception';
 import './Layout.css';
@@ -52,28 +52,11 @@ import { ExtraContent } from './extraRender';
 import { patchRoutes } from './runtime';
 import SiderMenu from './sider-menu';
 
-// Pages that use the page container in the page
-const NO_CONTAINER_PAGES = [
-  'chat',
-  'rerank',
-  'embedding',
-  'speech',
-  'image',
-  'text2images',
-  'clusterDetail',
-  'clusterCreate',
-  'benchmarkDetail',
-  'deployment',
-  'video',
-  'instances',
-  'storage'
-];
-
 const CHECK_RESOURCE_PATH = [
   '/resources/workers',
-  '/cluster-management/clusters/list',
-  '/cluster-management/credentials',
-  '/cluster-management/clusters/create'
+  '/resources/clusters/list',
+  '/resources/credentials',
+  '/resources/clusters/create'
 ];
 
 type NewRoute = IRoute & {
@@ -134,9 +117,6 @@ const mapRoutes = (routes: IRoute[], role: string) => {
 };
 
 export default (props: any) => {
-  const { initialize: initialize } = useOverlayScroller({
-    defer: false
-  });
   const [, contextHolder] = Modal.useModal();
   const { themeData, setUserSettings, userSettings } = useUserSettings();
   const [userInfo] = useAtom(userAtom);
@@ -161,6 +141,50 @@ export default (props: any) => {
 
   const { initialState, loading, setInitialState } = initialInfo;
   const access = useAccess();
+  const probedForUserRef = useRef<string | null>(null);
+
+  // Backfill the access probes (cluster / resource-events) once we're in
+  // the authenticated shell. `getInitialState` runs only once at app
+  // boot and can't probe on the login page (no session => 401), so after
+  // a first login the flags arrive here as `undefined` — which the
+  // access predicate treats as "don't restrict", flashing GPU Service /
+  // the full Usage page on until a manual refresh. This layout mounts
+  // only post-auth (login is `layout:false`) and on every entry, so it's
+  // the reliable place to resolve them.
+  //
+  // The effect is keyed on the user IDENTITY, not on the flag values —
+  // gating on the flags is what made this fragile (on a refresh
+  // `getInitialState` commits `currentUser` and the flags in the same
+  // update, so a flag-gated effect sees them already-known and never
+  // fires). Whether to actually hit the network is decided by the
+  // module-scoped `didInitialStateProbe()` marker, which is true only
+  // when `getInitialState` already probed for an authenticated user this
+  // page load (the refresh path) — so we skip the duplicate request there
+  // but still probe on the SPA-login path. Keying on identity also
+  // re-probes correctly if the signed-in user changes.
+  const currentUser = initialState?.currentUser;
+  const username = currentUser?.username;
+
+  useEffect(() => {
+    if (!username || !setInitialState) {
+      return;
+    }
+    if (probedForUserRef.current === username) {
+      return;
+    }
+    probedForUserRef.current = username;
+    // The refresh path already resolved the flags inside `getInitialState`
+    // for this user — don't issue a duplicate probe.
+    if (didInitialStateProbe()) {
+      return;
+    }
+    probeAccessFlags().then((accessFlags) => {
+      setInitialState((prev: any) => ({
+        ...prev,
+        ...accessFlags
+      }));
+    });
+  }, [username, setInitialState]);
 
   const userConfig = {
     title: '',
@@ -230,40 +254,12 @@ export default (props: any) => {
     [location.pathname]
   );
 
-  const isNoContainerPage = useMemo(() => {
-    // @ts-ignore
-    return NO_CONTAINER_PAGES.includes(matchedRoute?.name as string);
-  }, [matchedRoute]);
-
   const collapsed = useMemo(() => {
     return userSettings.collapsed || false;
   }, [userSettings.collapsed]);
 
   const renderMenuHeader = (logo: React.ReactNode, title: React.ReactNode) => {
-    return (
-      <>
-        {logo}
-        <div className="collapse-wrap" onClick={handleToggleCollapse}>
-          <Button
-            style={{
-              marginRight: collapsed ? 0 : -14,
-              border: 'none',
-              cursor: 'w-resize'
-            }}
-            size="small"
-            type={collapsed ? 'default' : 'text'}
-          >
-            <IconFont
-              type={collapsed ? 'icon-expand-left' : 'icon-expand-right'}
-              className="font-size-18 text-secondary"
-              style={{
-                display: 'block'
-              }}
-            />
-          </Button>
-        </div>
-      </>
-    );
+    return <>{logo}</>;
   };
 
   const menuContentRender = (menuProps: any, defaultDom: React.ReactNode) => {
@@ -356,7 +352,7 @@ export default (props: any) => {
         config={{
           apiBaseUrl: GPUSTACK_API_BASE_URL,
           theme: userSettings.theme,
-          iconUrl: '//at.alicdn.com/t/c/font_4613488_5prlfxmzgg5.js',
+          iconUrl: '',
           isDarkTheme: userSettings.isDarkTheme,
           defaultColorPrimary: COLOR_PRIMARY
         }}
@@ -387,6 +383,7 @@ export default (props: any) => {
           writeState
         }}
         slots={coreUISlots}
+        access={{ Access, useAccess }}
       >
         <DarkMask></DarkMask>
         <ProLayout
@@ -406,9 +403,23 @@ export default (props: any) => {
           openKeys={false}
           disableMobile={true}
           siderWidth={220}
+          menuFooterRender={() => (
+            <Button
+              style={{
+                border: 'none'
+              }}
+              size="small"
+              type={'text'}
+              onClick={handleToggleCollapse}
+            >
+              <IconFont
+                type={collapsed ? 'icon-expand-left' : 'icon-expand-right'}
+                className="font-size-18"
+              />
+            </Button>
+          )}
           onCollapse={onCollapse}
           onMenuHeaderClick={onMenuHeaderClick}
-          menuHeaderRender={renderMenuHeader}
           collapsed={userSettings.collapsed}
           onPageChange={onPageChange}
           formatMessage={formatMessage}
@@ -422,23 +433,29 @@ export default (props: any) => {
           {...runtimeConfig}
           ErrorBoundary={ErrorBoundary}
         >
-          <Exception
-            route={matchedRoute}
-            notFound={runtimeConfig?.notFound}
-            noFound={runtimeConfig?.noFound}
-            unAccessible={runtimeConfig?.unAccessible}
-            noAccessible={runtimeConfig?.noAccessible}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100vh',
+              overflow: 'hidden'
+            }}
           >
-            {isNoContainerPage ? (
-              <Outlet />
-            ) : (
+            <PluginExtraFields name="GlobalLicenseBanner" />
+            <Exception
+              route={matchedRoute}
+              notFound={runtimeConfig?.notFound}
+              noFound={runtimeConfig?.noFound}
+              unAccessible={runtimeConfig?.unAccessible}
+              noAccessible={runtimeConfig?.noAccessible}
+            >
               <PageContainerInner>
                 <div>
                   <Outlet />
                 </div>
               </PageContainerInner>
-            )}
-          </Exception>
+            </Exception>
+          </div>
           {NoResourceModal}
           {contextHolder}
         </ProLayout>

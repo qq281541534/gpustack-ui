@@ -3,23 +3,30 @@ import { PaginationKey } from '@/config/settings';
 import type { PageActionType } from '@/config/types';
 import useTableFetch from '@/hooks/use-table-fetch';
 import useQueryUserList from '@/pages/users/services/use-query-user-list';
-import { getGPUStackPlugin } from '@/plugins';
-import { useModel } from '@@/plugin-model';
 import { DeleteModal, FilterBar, IconFont, NoResult } from '@gpustack/core-ui';
-import { useIntl } from '@umijs/max';
+import { useAccess, useIntl } from '@umijs/max';
 import useMemoizedFn from 'ahooks/lib/useMemoizedFn';
 import { ConfigProvider, Table } from 'antd';
 import _ from 'lodash';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PageBox from '../_components/page-box';
 import { deleteApisKey, queryApisKeysList } from './apis';
 import AddAPIKeyModal from './components/add-apikey-modal';
 import { ListItem } from './config/types';
 import useKeysColumns from './hooks/use-keys-columns';
+import {
+  APIKeyConfigActionMount,
+  getAPIKeyConfigActions,
+  type APIKeyConfigActionController
+} from './plugin';
 
 const APIKeys: React.FC = () => {
-  const { initialState } = useModel('@@initialState');
-  const currentUser = initialState?.currentUser;
+  const access = useAccess();
+  // `canSeeOrgAdmin` widens to Org owners in the enterprise build —
+  // mirrors the BE's "platform admin OR current-Org owner" gate on
+  // listing every key in scope. Personal/member users continue to see
+  // only their own keys (`user_id: undefined`).
+  const canSeeAllKeys = !!access.canSeeOrgAdmin;
   const {
     TABLE_SORT_DIRECTIONS,
     dataSource,
@@ -41,7 +48,7 @@ const APIKeys: React.FC = () => {
     deleteAPI: deleteApisKey,
     contentForDelete: 'apikeys.table.apikeys',
     defaultQueryParams: {
-      user_id: currentUser?.is_admin ? '*' : undefined
+      user_id: canSeeAllKeys ? '*' : undefined
     }
   });
   const {
@@ -55,10 +62,27 @@ const APIKeys: React.FC = () => {
 
   const intl = useIntl();
 
-  const apiKeyIPConfig = getGPUStackPlugin()?.APIKeyIPConfig;
-  const APIKeyIPConfigForm = apiKeyIPConfig?.form;
-  const { openIPConfigModalStatus, openIPConfigModal, closeIPConfigModal } =
-    apiKeyIPConfig?.useCreateIPConfig?.() || {};
+  // Generic per-row plugin slot. Each enterprise plugin contributes a
+  // `{ key, labelId, icon, priority, form, useCreate }` entry; the
+  // host renders a button per entry in the dropdown and renders one
+  // `APIKeyConfigActionMount` per entry — those mounts own each
+  // entry's controller and register it back into `controllersRef` so
+  // dropdown clicks can route to the correct `openModal`. See
+  // `./plugin.tsx`.
+  //
+  // The action list is read once. Plugins are registered at boot and
+  // never recompute, so the reference is stable for the lifetime of
+  // the page and `useMemo([])` is safe.
+  const configActions = useMemo(() => getAPIKeyConfigActions(), []);
+  const controllersRef = useRef<Record<string, APIKeyConfigActionController>>(
+    {}
+  );
+  const registerController = useCallback(
+    (key: string, controller: APIKeyConfigActionController) => {
+      controllersRef.current[key] = controller;
+    },
+    []
+  );
 
   const [openAddModal, setOpenAddModal] = useState<{
     open: boolean;
@@ -73,8 +97,15 @@ const APIKeys: React.FC = () => {
   });
 
   useEffect(() => {
+    // `scope=current_org` limits the creator dropdown to members of the
+    // active Org. Without it, an Org owner sees every user in the
+    // system — most of whom can't own a key visible in this list, so
+    // selecting them produces an empty result. The BE drops the
+    // param silently when the request has no Org context, so callers
+    // without an Org keep the full-directory behavior.
     fetchUserData({
-      page: -1
+      page: -1,
+      scope: 'current_org'
     });
     return () => {
       cancelUserRequest();
@@ -102,12 +133,6 @@ const APIKeys: React.FC = () => {
   const handleModalOk = async () => {
     try {
       await fetchData();
-      setOpenAddModal({
-        open: false,
-        title: '',
-        action: PageAction.CREATE,
-        currentData: null
-      });
     } catch (error) {
       // do nothing
     }
@@ -140,6 +165,14 @@ const APIKeys: React.FC = () => {
     }
   );
 
+  // Each plugin entry's button onClick routes here. The controller
+  // registry is populated by each `APIKeyConfigActionMount` on mount.
+  const handleConfigAction = useMemoizedFn(
+    (actionKey: string, record: ListItem) => {
+      controllersRef.current[actionKey]?.openModal(record);
+    }
+  );
+
   const handleUserChange = (val: string) => {
     handleQueryChange({
       user_id: val || '*'
@@ -150,11 +183,15 @@ const APIKeys: React.FC = () => {
     if (type !== 'Table') return;
     return (
       <NoResult
+        minHeight="calc(100vh - 300px)"
         loading={dataSource.loading}
         loadend={dataSource.loadend}
         dataSource={dataSource.dataList}
         image={<IconFont type="icon-key" />}
-        filters={_.omit(queryParams, ['sort_by'])}
+        filters={{
+          ..._.omit(queryParams, ['sort_by']),
+          user_id: queryParams.user_id === '*' ? undefined : queryParams.user_id
+        }}
         noFoundText={intl.formatMessage({
           id: 'noresult.keys.nofound'
         })}
@@ -169,8 +206,9 @@ const APIKeys: React.FC = () => {
   const columns = useKeysColumns({
     handleSelect: onSelect,
     sortOrder,
-    is_admin: currentUser?.is_admin,
-    onIPConfig: openIPConfigModal
+    showCreator: canSeeAllKeys,
+    configActions,
+    onConfigAction: handleConfigAction
   });
 
   return (
@@ -179,10 +217,10 @@ const APIKeys: React.FC = () => {
         <FilterBar
           marginBottom={22}
           marginTop={30}
-          showSelect={currentUser?.is_admin}
+          showSelect={canSeeAllKeys}
           selectOptions={userList}
           select={{ showSearch: { optionFilterProp: 'label' } }}
-          selectHolder={intl.formatMessage({ id: 'models.table.filterByName' })}
+          selectHolder={intl.formatMessage({ id: 'common.filter.byCreator' })}
           buttonText={intl.formatMessage({ id: 'apikeys.button.create' })}
           handleSearch={handleSearch}
           handleDeleteByBatch={handleDeleteBatch}
@@ -194,6 +232,7 @@ const APIKeys: React.FC = () => {
         ></FilterBar>
         <ConfigProvider renderEmpty={renderEmpty}>
           <Table
+            className={'scroll-table'}
             columns={columns}
             dataSource={dataSource.dataList}
             rowSelection={rowSelection}
@@ -225,14 +264,20 @@ const APIKeys: React.FC = () => {
         onCancel={handleModalCancel}
         onOk={handleModalOk}
       ></AddAPIKeyModal>
-      {APIKeyIPConfigForm && (
-        <APIKeyIPConfigForm
-          open={openIPConfigModalStatus.open}
-          apiKey={openIPConfigModalStatus.currentData}
-          onClose={closeIPConfigModal}
-        />
-      )}
       <DeleteModal ref={modalRef}></DeleteModal>
+      {/* One mount per registered action. Each mount calls its
+          entry's `useCreate` (single hook per component, so iterating
+          the plugin list doesn't violate the Rules of Hooks),
+          renders the form, and registers its controller so dropdown
+          clicks can dispatch to it. */}
+      {configActions.map((action) => (
+        <APIKeyConfigActionMount
+          key={action.key}
+          action={action}
+          registerController={registerController}
+          onOk={fetchData}
+        />
+      ))}
     </>
   );
 };

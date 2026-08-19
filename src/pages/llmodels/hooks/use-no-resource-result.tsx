@@ -52,7 +52,7 @@ const useNoResourceResult = (props: {
         firstAddCluster: true
       });
 
-      navigate(`/cluster-management/clusters/list`);
+      navigate(`/resources/clusters/list`);
       return;
     }
 
@@ -61,7 +61,7 @@ const useNoResourceResult = (props: {
         firstAddWorker: true,
         firstAddCluster: false
       });
-      navigate(`/cluster-management/clusters/list`);
+      navigate(`/resources/clusters/list`);
     }
   });
 
@@ -95,6 +95,7 @@ const useNoResourceResult = (props: {
 
   const noResourceResult = (
     <NoResult
+      minHeight="calc(100vh - 300px)"
       loading={loading}
       loadend={loadend}
       dataSource={dataSource}

@@ -1,6 +1,5 @@
+import PluginExtraFields from '@/components/plugin-extra-fields';
 import useRangePickerPreset from '@/pages/dashboard/hooks/use-rangepicker-preset';
-import ProviderLogo from '@/pages/maas-provider/components/provider-logo';
-import { useModel } from '@@/plugin-model';
 import { DownloadOutlined, SyncOutlined } from '@ant-design/icons';
 import {
   AutoTooltip,
@@ -8,13 +7,14 @@ import {
   IconFont,
   SimpleSelect
 } from '@gpustack/core-ui';
-import { useIntl } from '@umijs/max';
+import { useAccess, useIntl } from '@umijs/max';
 import { Button, DatePicker, Dropdown, MenuProps } from 'antd';
 import dayjs from 'dayjs';
 import React from 'react';
 import { GroupOption } from '../config';
 import { UsageFilterItem } from '../config/types';
 import FilterBarCss from '../styles/filter-bar.less';
+import DeletedTag from './deleted-tag';
 
 type valueType = string | number | null;
 const DefaultDateConfig = {
@@ -32,21 +32,27 @@ interface FilterBarProps {
   scope: string;
   startDate: string;
   endDate: string;
-  selectedModels: string[];
+  selectedRoutes: string[];
   selectedUsers: string[];
   selectedApiKeys: string[];
-  modelOptions: GroupOption<UsageFilterItem>[];
+  routeOptions: OptionType[];
   userOptions: OptionType[];
   apiKeyOptions: GroupOption<UsageFilterItem>[];
-  activeModels: valueType[][];
+  // Platform-wide "All" view only; empty otherwise (backend-gated). Rendered
+  // by the enterprise ``UsageFilterBar`` slot.
+  organizationOptions?: OptionType[];
+  userGroupOptions?: OptionType[];
+  selectedOrganizations?: string[];
+  selectedUserGroups?: string[];
+  onOrganizationsChange?: (value: string[]) => void;
+  onUserGroupsChange?: (value: string[]) => void;
   activeApiKeys: valueType[][];
   handlePickerChange: (picker: DateType) => void;
   onScopeChange: (value: string) => void;
   onDateChange: (dates: any, dateStrings: [string, string]) => void;
-  onModelsChange: (value: string[]) => void;
+  onRoutesChange: (value: string[]) => void;
   onUsersChange: (value: string[]) => void;
   onApiKeysChange: (value: string[]) => void;
-  handleActiveModelsChange: (value: valueType[][]) => void;
   handleActiveApiKeysChange: (value: valueType[][]) => void;
   onExport?: () => void;
   handleSearch?: () => void;
@@ -56,7 +62,7 @@ interface FilterBarProps {
     scope: string;
     start_date: string;
     end_date: string;
-    models: string[];
+    routes: string[];
     users: string[];
     api_keys: string[];
   };
@@ -67,20 +73,25 @@ const FilterBar: React.FC<FilterBarProps> = (props) => {
     pageType = 'page',
     startDate,
     endDate,
+    selectedRoutes,
     selectedUsers,
     selectedApiKeys,
-    modelOptions,
+    routeOptions,
     userOptions,
     apiKeyOptions,
-    activeModels,
     activeApiKeys,
-    handleActiveModelsChange,
     handleActiveApiKeysChange,
     handlePickerChange,
     onDateChange,
-    onModelsChange,
+    onRoutesChange,
     onUsersChange,
     onApiKeysChange,
+    organizationOptions,
+    userGroupOptions,
+    selectedOrganizations,
+    selectedUserGroups,
+    onOrganizationsChange,
+    onUserGroupsChange,
     onExportChart,
     onExportTable,
     handleSearch
@@ -123,8 +134,12 @@ const FilterBar: React.FC<FilterBarProps> = (props) => {
     ]
   });
 
-  const initialInfo = useModel('@@initialState');
-  const { initialState } = initialInfo || {};
+  // ``canSeeOrgAdmin`` already encodes "platform admin OR owner of the
+  // selected (non-Personal) Org" via the access seam. Mirrors the
+  // backend's ``_can_use_all_scope`` predicate for the user-filter
+  // drill-down surface.
+  const access = useAccess();
+  const canManageUsers = !!access.canSeeOrgAdmin;
 
   const exportMenuItems: MenuProps['items'] = [
     {
@@ -157,16 +172,16 @@ const FilterBar: React.FC<FilterBarProps> = (props) => {
     );
   };
 
-  const handleOnModelsChange = (value: valueType[][], selectedOptions: any) => {
-    const selectedValues: string[] = value.map((item) => {
-      if (Array.isArray(item)) {
-        return item[item.length - 1] as string; // Get the last value in the array
-      }
-      return item as string;
-    });
-    handleActiveModelsChange(value);
-    onModelsChange(selectedValues);
+  // The entity id behind a deleted option, shown in the "Deleted·#{id}" tag so
+  // two deleted entries with the same (now-stale) label stay distinguishable.
+  const getEntityId = (data: any): valueType => {
+    const current = data?.identity?.current;
+    if (!current) return null;
+    return current.user_id ?? current.api_key_id ?? current.route_id ?? null;
   };
+
+  const deletedLabelStyle = (deleted?: boolean) =>
+    deleted ? { color: 'var(--ant-color-text-tertiary)' } : undefined;
 
   const handleOnApiKeysChange = (
     value: valueType[][],
@@ -182,63 +197,15 @@ const FilterBar: React.FC<FilterBarProps> = (props) => {
     onApiKeysChange(selectedValues);
   };
 
-  const displayRender = (labels: any[], option: any) => {
-    return (
-      <AutoTooltip
-        ghost
-        maxWidth={150}
-        title={
-          <span>
-            {labels[0]} / {labels[1]}
-          </span>
-        }
-      >
-        {labels[0]} / {labels[1]}
-      </AutoTooltip>
-    );
-  };
-
-  const optionRender = (option: any) => {
-    const { data } = option;
-    if (!data.isParent) {
-      return (
-        <span className="flex-center gap-4">
-          <AutoTooltip ghost>{data.label}</AutoTooltip>
-          {data.deleted &&
-            renderTag(intl.formatMessage({ id: 'usage.table.deleted' }))}
-        </span>
-      );
-    }
-
-    if (data.type === 'deployments') {
-      return (
-        <span className={FilterBarCss.optionsWrapper}>
-          <ProviderLogo provider={data.type as string} />
-          <AutoTooltip ghost>
-            {intl.formatMessage({ id: 'menu.models.deployment' })}
-          </AutoTooltip>
-        </span>
-      );
-    }
-
-    return (
-      <span className={FilterBarCss.optionsWrapper}>
-        <ProviderLogo provider={data.type as string} />
-        <AutoTooltip ghost>
-          <span>{data.label}</span>
-        </AutoTooltip>
-      </span>
-    );
-  };
-
   const apiKeyOptionRender = (option: any) => {
     const { data } = option;
     if (!data.isParent) {
       return (
         <span className="flex-center gap-4">
-          <AutoTooltip ghost>{data.label}</AutoTooltip>
-          {data.deleted &&
-            renderTag(intl.formatMessage({ id: 'usage.table.deleted' }))}
+          <AutoTooltip ghost style={deletedLabelStyle(data.deleted)}>
+            {data.label}
+          </AutoTooltip>
+          {data.deleted && <DeletedTag id={getEntityId(data)} />}
         </span>
       );
     }
@@ -254,9 +221,10 @@ const FilterBar: React.FC<FilterBarProps> = (props) => {
     const { data } = option;
     return (
       <span className="flex-center gap-4">
-        <AutoTooltip ghost>{data.label}</AutoTooltip>
-        {data.deleted &&
-          renderTag(intl.formatMessage({ id: 'usage.table.deleted' }))}
+        <AutoTooltip ghost style={deletedLabelStyle(data.deleted)}>
+          {data.label}
+        </AutoTooltip>
+        {data.deleted && <DeletedTag id={getEntityId(data)} />}
       </span>
     );
   };
@@ -275,11 +243,12 @@ const FilterBar: React.FC<FilterBarProps> = (props) => {
     const { data } = option;
     return (
       <span className="flex-center gap-4">
-        <AutoTooltip ghost>{data.label}</AutoTooltip>
+        <AutoTooltip ghost style={deletedLabelStyle(data.deleted)}>
+          {data.label}
+        </AutoTooltip>
         {data.isCurrent &&
           renderTag(intl.formatMessage({ id: 'usage.user.currentAccount' }))}
-        {data.deleted &&
-          renderTag(intl.formatMessage({ id: 'usage.table.deleted' }))}
+        {data.deleted && <DeletedTag id={getEntityId(data)} />}
       </span>
     );
   };
@@ -303,53 +272,27 @@ const FilterBar: React.FC<FilterBarProps> = (props) => {
           style={{ width: 240 }}
           onChange={onDateChange}
         />
-        <div
-          style={{
-            maxWidth: 400,
-            flex: 1,
-            minWidth: 200
+        <SimpleSelect
+          allowClear
+          showSearch
+          mode="multiple"
+          maxTagCount={'responsive'}
+          options={routeOptions}
+          placeholder={intl.formatMessage({ id: 'usage.filter.model' })}
+          styles={{
+            wrapper: { flex: 1, maxWidth: 400, minWidth: 200 }
           }}
-        >
-          <Cascader
-            showSearch
-            multiple={true}
-            classNames={{
-              popup: {
-                root: 'cascader-popup-wrapper gpu-selector'
-              }
-            }}
-            styles={{
-              root: {
-                width: '100%'
-              },
-              popup: {
-                list: {
-                  flex: 1
-                },
-                listItem: {
-                  padding: '5px 10px'
-                }
-              }
-            }}
-            maxTagCount={1}
-            size="small"
-            isInFormItems={false}
-            placeholder={intl.formatMessage({ id: 'usage.filter.model' })}
-            options={modelOptions}
-            showCheckedStrategy="SHOW_CHILD"
-            displayRender={displayRender}
-            optionNode={optionRender}
-            value={activeModels}
-            onChange={handleOnModelsChange}
-            getPopupContainer={(triggerNode) => triggerNode.parentNode}
-          ></Cascader>
-        </div>
-        {initialState?.currentUser?.is_admin && (
+          value={selectedRoutes}
+          optionLabelRender={singleOptionRender}
+          onChange={onRoutesChange}
+        />
+        {canManageUsers && (
           <>
             <SimpleSelect
               allowClear
               showSearch
               mode="multiple"
+              maxTagCount={'responsive'}
               options={userOptions}
               placeholder={intl.formatMessage({ id: 'usage.filter.user' })}
               styles={{
@@ -401,13 +344,13 @@ const FilterBar: React.FC<FilterBarProps> = (props) => {
             </div>
           </>
         )}
-        {!initialState?.currentUser?.is_admin && (
+        {!canManageUsers && (
           <SimpleSelect
             allowClear
             showSearch
             mode="multiple"
+            maxTagCount={'responsive'}
             options={apiKeyOptions?.[0]?.children || []}
-            maxTagCount={0}
             placeholder={intl.formatMessage({ id: 'usage.filter.apikey' })}
             styles={{
               wrapper: { flex: 1, maxWidth: 240, minWidth: 100 }
@@ -417,6 +360,21 @@ const FilterBar: React.FC<FilterBarProps> = (props) => {
             onChange={onApiKeysChange}
           />
         )}
+        {/* Enterprise-only Organization / User Group filters (platform-wide
+            "All" view). Renders nothing when no plugin is registered or the
+            backend returned no options. */}
+        <PluginExtraFields
+          name="UsageFilterBar"
+          context={{
+            organizationOptions: organizationOptions || [],
+            userGroupOptions: userGroupOptions || [],
+            selectedOrganizations: selectedOrganizations || [],
+            selectedUserGroups: selectedUserGroups || [],
+            onOrganizationsChange,
+            onUserGroupsChange,
+            optionLabelRender: singleOptionRender
+          }}
+        />
         <Button
           type="text"
           style={{ color: 'var(--ant-color-text-tertiary)' }}

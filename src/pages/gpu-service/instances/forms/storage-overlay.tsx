@@ -1,26 +1,47 @@
 import { PageAction } from '@/config';
-import FormOverlayView from '@/pages/_components/form-overlay-view';
-import { ModalFooter } from '@gpustack/core-ui';
+import { FormContext } from '@/pages/gpu-service/storage/config/form-context';
+import useQueryStorageClass from '@/pages/gpu-service/storage/services/use-query-storage-class';
+import { ModalFooter, SubDrawer } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
-import { useCallback, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FormData as StorageFormData } from '../../storage/config/types';
 import GPUServiceStorageForm from '../../storage/forms';
+import useOverlayLayout from '../hooks/use-overlay-layout';
 
 interface StorageOverlayProps {
   open: boolean;
-  namespace?: string;
+  // Org the surrounding instance create form targets (platform admin "All"
+  // view). The storage inherits this scope, so the type list is pinned to
+  // it — the picker only offers types that org can reference. Undefined
+  // when there's no create-scope picker (the ambient org context applies).
+  scopeOrgId?: number | null;
   onCancel: () => void;
   onSubmit: (values: StorageFormData) => Promise<void> | void;
 }
 
 const StorageOverlay: React.FC<StorageOverlayProps> = ({
   open,
-  namespace,
+  scopeOrgId,
   onCancel,
   onSubmit
 }) => {
   const intl = useIntl();
+  const { storageClassList, fetchData: fetchStorageClass } =
+    useQueryStorageClass();
+  const [loading, setLoading] = useState(false);
   const formRef = useRef<any>(null);
+  const { drawerWidth, getOverlayContainer } = useOverlayLayout(open);
+
+  useEffect(() => {
+    if (open) {
+      fetchStorageClass(
+        { page: -1 },
+        scopeOrgId != null
+          ? { headers: { 'X-Organization-Id': String(scopeOrgId) } }
+          : undefined
+      );
+    }
+  }, [open, scopeOrgId]);
 
   const handleSubmit = () => {
     formRef.current?.submit();
@@ -32,28 +53,26 @@ const StorageOverlay: React.FC<StorageOverlayProps> = ({
   };
 
   const handleFinish = async (values: StorageFormData) => {
-    await onSubmit(values);
+    setLoading(true);
+    try {
+      await onSubmit(values);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getOverlayContainer = useCallback(() => {
-    const containers = document.querySelectorAll<HTMLElement>(
-      '.ant-layout-content'
-    );
-
-    return containers[containers.length - 1] ?? null;
-  }, []);
-
   return (
-    <FormOverlayView
+    <SubDrawer
       title={intl.formatMessage({ id: 'gpuservice.storage.add' })}
       open={open}
-      width={600}
+      width={drawerWidth}
       onCancel={handleCancel}
       getContainer={getOverlayContainer}
       footer={
         <ModalFooter
           onOk={handleSubmit}
           onCancel={handleCancel}
+          loading={loading}
           style={{
             padding: '16px 24px 24px',
             display: 'flex',
@@ -62,14 +81,16 @@ const StorageOverlay: React.FC<StorageOverlayProps> = ({
         />
       }
     >
-      <GPUServiceStorageForm
-        ref={formRef}
-        action={PageAction.CREATE}
-        open={open}
-        namespace={namespace}
-        onFinish={handleFinish}
-      />
-    </FormOverlayView>
+      <FormContext.Provider value={{ storageClassList }}>
+        <GPUServiceStorageForm
+          ref={formRef}
+          action={PageAction.CREATE}
+          open={open}
+          showOrgScope={false}
+          onFinish={handleFinish}
+        />
+      </FormContext.Provider>
+    </SubDrawer>
   );
 };
 

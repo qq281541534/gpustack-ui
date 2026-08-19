@@ -1,12 +1,9 @@
 import { StatusMaps } from '@/config';
 import { StatusType } from '@/config/types';
-import { icons } from '@gpustack/core-ui';
+import { IconFont, icons } from '@gpustack/core-ui';
 import _ from 'lodash';
-import {
-  InstanceTypeItem,
-  InstanceTypeResource,
-  InstanceTypeStatus
-} from './types';
+import React from 'react';
+import { ListItem } from '../config/types';
 
 export const InstanceStatusValueMap = {
   Scheduling: 'Scheduling',
@@ -17,19 +14,49 @@ export const InstanceStatusValueMap = {
   Initialized: 'Initialized',
   Preparing: 'Preparing',
   NotReady: 'NotReady',
-  Ready: 'Ready'
+  Ready: 'Ready',
+  Starting: 'Starting',
+  Deleting: 'Deleting',
+  Stopping: 'Stopping',
+  Stopped: 'Stopped',
+  CreateFailed: 'CreateFailed',
+  SSHPublicKeyCreateFailed: 'SSHPublicKeyCreateFailed',
+  PersistentVolumeTypeCreateFailed: 'PersistentVolumeTypeCreateFailed',
+  PersistentVolumeCreateFailed: 'PersistentVolumeCreateFailed',
+  Unknown: 'Unknown'
 };
 
+export const K8SStatuses = [
+  InstanceStatusValueMap.Scheduling,
+  InstanceStatusValueMap.Pending,
+  InstanceStatusValueMap.Scheduled,
+  InstanceStatusValueMap.Initializing,
+  InstanceStatusValueMap.InitializeFailed,
+  InstanceStatusValueMap.Initialized,
+  InstanceStatusValueMap.Preparing,
+  InstanceStatusValueMap.NotReady,
+  InstanceStatusValueMap.Ready
+];
+
+export const GPUStackFailedStatuses = [
+  InstanceStatusValueMap.CreateFailed,
+  InstanceStatusValueMap.SSHPublicKeyCreateFailed,
+  InstanceStatusValueMap.PersistentVolumeTypeCreateFailed,
+  InstanceStatusValueMap.PersistentVolumeCreateFailed
+];
+
 export const InstanceStatusLabelMap: Record<string, string> = {
-  [InstanceStatusValueMap.Scheduling]: 'Scheduling',
-  [InstanceStatusValueMap.Pending]: 'Pending',
-  [InstanceStatusValueMap.Scheduled]: 'Scheduled',
-  [InstanceStatusValueMap.Initializing]: 'Initializing',
-  [InstanceStatusValueMap.InitializeFailed]: 'InitializeFailed',
-  [InstanceStatusValueMap.Initialized]: 'Initialized',
-  [InstanceStatusValueMap.Preparing]: 'Preparing',
-  [InstanceStatusValueMap.NotReady]: 'NotReady',
-  [InstanceStatusValueMap.Ready]: 'Ready'
+  // === K8s Statuses ===
+  ...Object.fromEntries(K8SStatuses.map((status) => [status, status])),
+  // === GPUStack Statuses no logs and events===
+  [InstanceStatusValueMap.Deleting]: 'Deleting',
+  [InstanceStatusValueMap.Stopping]: 'Stopping',
+  [InstanceStatusValueMap.Stopped]: 'Stopped',
+  [InstanceStatusValueMap.Unknown]: 'Unknown',
+  [InstanceStatusValueMap.Starting]: 'Starting',
+  ...Object.fromEntries(
+    GPUStackFailedStatuses.map((status) => [status, status])
+  )
 };
 
 export const status: Record<string, StatusType> = {
@@ -41,15 +68,110 @@ export const status: Record<string, StatusType> = {
   [InstanceStatusValueMap.Initialized]: StatusMaps.transitioning,
   [InstanceStatusValueMap.Preparing]: StatusMaps.transitioning,
   [InstanceStatusValueMap.NotReady]: StatusMaps.error,
-  [InstanceStatusValueMap.Ready]: StatusMaps.success
+  [InstanceStatusValueMap.Ready]: StatusMaps.success,
+  [InstanceStatusValueMap.Starting]: StatusMaps.transitioning,
+  [InstanceStatusValueMap.Deleting]: StatusMaps.warning,
+  [InstanceStatusValueMap.Stopping]: StatusMaps.transitioning,
+  [InstanceStatusValueMap.Stopped]: StatusMaps.inactive,
+  [InstanceStatusValueMap.CreateFailed]: StatusMaps.error,
+  [InstanceStatusValueMap.SSHPublicKeyCreateFailed]: StatusMaps.error,
+  [InstanceStatusValueMap.PersistentVolumeTypeCreateFailed]: StatusMaps.error,
+  [InstanceStatusValueMap.PersistentVolumeCreateFailed]: StatusMaps.error,
+  [InstanceStatusValueMap.Unknown]: StatusMaps.error
 };
 
-export const rowActionList = [
+export interface InstanceRowAction {
+  label: string;
+  key: string;
+  locale?: boolean;
+  icon?: React.ReactNode;
+  props?: Record<string, any>;
+  show?: (record: ListItem) => boolean;
+  disabled?: (record: ListItem) => boolean;
+}
+
+export const rowActionList: InstanceRowAction[] = [
   {
     label: 'common.button.edit',
     key: 'edit',
     locale: true,
     icon: icons.EditOutlined
+  },
+  {
+    label: 'common.button.viewlog',
+    key: 'viewlog',
+    locale: true,
+    icon: React.createElement(IconFont, { type: 'icon-logs' }),
+    show: (record: ListItem) => {
+      const phase = record.status?.phase;
+      return [InstanceStatusValueMap.Ready].includes(phase as string);
+    }
+  },
+  {
+    label: 'common.button.viewevent',
+    key: 'viewevent',
+    locale: true,
+    icon: icons.ProfileOutlined,
+    show: (record: ListItem) => {
+      const phase = record.status?.phase;
+      return [...K8SStatuses, InstanceStatusValueMap.Starting].includes(
+        phase as string
+      );
+    }
+  },
+  {
+    label: 'common.button.start',
+    key: 'start',
+    locale: true,
+    icon: icons.Play,
+    props: {
+      disabled: false
+    },
+    show: (record: ListItem) => {
+      const phase = record.status?.phase;
+      return [InstanceStatusValueMap.Stopped].includes(phase as string);
+    }
+  },
+  {
+    label: 'common.button.stop',
+    key: 'stop',
+    locale: true,
+    icon: icons.Stop,
+    props: {
+      disabled: false
+    },
+    show: (record: ListItem) => {
+      const phase = record.status?.phase;
+      return [InstanceStatusValueMap.Ready].includes(phase as string);
+    }
+  },
+  {
+    label: 'common.button.delete',
+    key: 'delete',
+    locale: true,
+    icon: icons.DeleteOutlined,
+    show: (record: ListItem) => {
+      const phase = record.status?.phase;
+      return true;
+    },
+    props: {
+      danger: true
+    }
+  }
+];
+
+export const batchActionList = [
+  {
+    label: 'common.button.start',
+    key: 'start',
+    locale: true,
+    icon: icons.Play
+  },
+  {
+    label: 'common.button.stop',
+    key: 'stop',
+    locale: true,
+    icon: icons.Stop
   },
   {
     label: 'common.button.delete',
@@ -63,8 +185,6 @@ export const rowActionList = [
 ];
 
 export const InstanceTypePhaseValueMap = {
-  // Available: 'Available',
-  // Unavailable: 'Unavailable'
   PreParing: 'Preparing',
   Inactive: 'Inactive',
   Active: 'Active'
@@ -83,9 +203,11 @@ export const InstanceTypePhaseStatus: Record<string, StatusType> = {
 };
 
 export const StorageModeValueMap = {
-  Existing: 'existing',
-  Temporary: 'temporary'
+  Temporary: 'temporary',
+  Persistent: 'persistent'
 };
+
+export const DEFAULT_PV_CAPACITY_GB = 20;
 
 // Constant SSH public key resource name used when SSH is enabled
 export const DEFAULT_SSH_PUBLIC_KEY_NAME = 'default';
@@ -101,53 +223,87 @@ export const convertKiToGi = (value?: string): string | undefined => {
   const match = /^(-?\d+(?:\.\d+)?)(Ki|Mi|Gi|Ti)$/.exec(value);
   if (!match) return value;
   const [, num, unit] = match;
-  if (unit === 'Ti') return `${_.round(Number(num), 2)}Ti`;
-  return `${_.round(Number(num) / GI_DIVISOR[unit], 2)}Gi`;
+  if (unit === 'Ti') return `${_.floor(Number(num), 0)} Ti`;
+  return `${_.floor(Number(num) / GI_DIVISOR[unit], 0)} Gi`;
 };
 
-export const transformInstanceTypeResource = (
-  resource?: InstanceTypeResource
-): InstanceTypeResource | undefined => {
-  if (!resource) return resource;
-  return {
-    ...resource,
-    capacity: convertKiToGi(
-      resource.capacity
-    ) as InstanceTypeResource['capacity'],
-    onceMaxRequest: convertKiToGi(
-      resource.onceMaxRequest
-    ) as InstanceTypeResource['onceMaxRequest'],
-    remaining: convertKiToGi(
-      resource.remaining
-    ) as InstanceTypeResource['remaining']
-  };
+// Memory quantity → display string, flooring to whole Gi. Accepts a k8s
+// quantity string ("16Gi" / "32607Mi") or a raw MiB number (as the Usage
+// breakdown carries it). Centralizes the conversion so the GPU Instances list
+// and the Usage tab render identical sizes (e.g. both "31GB", not 31 vs 32).
+export const formatMemoryDisplay = (
+  value?: string | number
+): string | undefined => {
+  if (!value) return undefined;
+  const quantity = typeof value === 'number' ? `${value}Mi` : value;
+  return (
+    convertKiToGi(quantity)?.replace(/Gi$/, 'GB').replace(/Ti$/, 'TB') ||
+    undefined
+  );
 };
 
-export const transformInstanceType = (
-  item: InstanceTypeItem
-): InstanceTypeItem => {
-  if (!item?.status) return item;
-  const status = item.status;
-  return {
-    ...item,
-    spec: {
-      ...item.spec,
-      manufacturer: !item.spec?.acceleratable ? 'cpu' : item.spec.manufacturer
-    },
-    status: {
-      ...status,
-      accelerator: transformInstanceTypeResource(
-        status.accelerator
-      ) as InstanceTypeStatus['accelerator'],
-      cpu: transformInstanceTypeResource(
-        status.cpu
-      ) as InstanceTypeStatus['cpu'],
-      localStorage: transformInstanceTypeResource(
-        status.localStorage
-      ) as InstanceTypeStatus['localStorage'],
-      ram: transformInstanceTypeResource(
-        status.ram
-      ) as InstanceTypeStatus['ram']
-    }
-  };
+const parseQuantity = (value?: string | null): number => {
+  if (!value) return 0;
+  const match = /^(-?\d+(?:\.\d+)?)/.exec(String(value));
+  return match ? Number(match[1]) || 0 : 0;
+};
+
+// Returns the slider max for the accelerator count: the largest
+// tier.onceMaxRequest.accelerator across all tiers (not from candidates).
+export const getAcceleratorMax = (
+  tiers?: { onceMaxRequest: { accelerator?: string } }[] | null
+) => {
+  if (!tiers?.length) return 0;
+  return tiers.reduce((acc, tier) => {
+    const n = parseQuantity(tier.onceMaxRequest?.accelerator);
+    return n > acc ? n : acc;
+  }, 0);
+};
+
+// Picks the candidate (cluster + type name) that should fulfill a requested
+// accelerator count: the first candidate of the smallest tier whose
+// onceMaxRequest.accelerator is >= the requested count and whose cpu/ram/localStorage
+// remaining are all > 0.
+export const pickCandidateForAccelerator = <
+  C extends {
+    cluster: string;
+    name: string;
+    cpu?: { remaining?: string | null } | null;
+    ram?: { remaining?: string | null } | null;
+    localStorage?: { remaining?: string | null } | null;
+  }
+>(
+  tiers:
+    | {
+        onceMaxRequest: { accelerator?: string };
+        candidates?: C[] | null;
+      }[]
+    | undefined
+    | null,
+  { count, acceleratable }: { count: number; acceleratable?: boolean }
+): C | null => {
+  if (!tiers?.length) return null;
+
+  const hasResources = (c: C) =>
+    parseQuantity(c.cpu?.remaining) > 0 &&
+    parseQuantity(c.ram?.remaining) > 0 &&
+    parseQuantity(c.localStorage?.remaining) > 0;
+
+  const sorted = [...tiers].sort(
+    (a, b) =>
+      parseQuantity(a.onceMaxRequest?.accelerator) -
+      parseQuantity(b.onceMaxRequest?.accelerator)
+  );
+
+  // count === 0 ? parseQuantity(tier.onceMaxRequest.accelerator) > count; this is CPU-only case.
+  for (const tier of sorted) {
+    const acceleratorCount = parseQuantity(tier.onceMaxRequest?.accelerator);
+    const fits = acceleratable
+      ? acceleratorCount >= count
+      : acceleratorCount === 0;
+    if (!fits) continue;
+    const candidate = tier.candidates?.find(hasResources);
+    if (candidate) return candidate;
+  }
+  return null;
 };

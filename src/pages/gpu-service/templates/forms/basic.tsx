@@ -1,3 +1,6 @@
+import PluginExtraFields from '@/components/plugin-extra-fields';
+import { PageAction, validateLabelNameRegxFor63 } from '@/config';
+import { PageActionType } from '@/config/types';
 import {
   Input as CInput,
   InputNumber,
@@ -6,9 +9,10 @@ import {
   useAppUtils
 } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
-import { Flex, Form } from 'antd';
+import { Form } from 'antd';
 import { useMemo } from 'react';
 import { GPUsConfigs } from '../../../resources/config/gpu-driver';
+import formStyles from '../../instances/styles/instances.module.less';
 import {
   ImagePullPolicyOptions,
   normalizeCommand,
@@ -26,35 +30,39 @@ export interface BasicResourceMax {
 
 interface BasicProps {
   page?: 'template' | 'instance';
+  action?: PageActionType;
+  disabled?: boolean;
   onceMaxRequest?: BasicResourceMax;
 }
 
-const Basic: React.FC<BasicProps> = ({ page = 'template', onceMaxRequest }) => {
+const Basic: React.FC<BasicProps> = ({
+  page = 'template',
+  action,
+  onceMaxRequest,
+  disabled
+}) => {
   const { getRuleMessage } = useAppUtils();
   const intl = useIntl();
 
   const manufacturerOptions = useMemo(
     () =>
       Object.values(GPUsConfigs).map((item) => ({
-        label: item.label,
+        label: item.locales.locale
+          ? intl.formatMessage({ id: item.locales.label })
+          : item.locales.label,
         value: item.gpuVendor
       })),
-    []
+    [intl]
   );
 
-  const renderMaxLabel = (
-    label: React.ReactNode,
-    max?: number | null
-  ): React.ReactNode => {
-    if (max == null) return label;
-    return (
-      <Flex gap={4} align="center">
-        {label}
-        <span>
-          ({intl.formatMessage({ id: 'common.max' }, { count: max })})
-        </span>
-      </Flex>
-    );
+  const renderStorageLabel = (): React.ReactNode => {
+    if (page === 'instance' && onceMaxRequest?.localStorage != null) {
+      return intl.formatMessage(
+        { id: 'gpuservice.instance.containerDisk.remaining' },
+        { count: onceMaxRequest.localStorage }
+      );
+    }
+    return intl.formatMessage({ id: 'gpuservice.template.containerDisk' });
   };
 
   return (
@@ -68,14 +76,45 @@ const Basic: React.FC<BasicProps> = ({ page = 'template', onceMaxRequest }) => {
               {
                 required: true,
                 message: getRuleMessage('input', 'common.table.name')
+              },
+              {
+                pattern: validateLabelNameRegxFor63,
+                message: intl.formatMessage({
+                  id: 'gpuservice.form.rule.name'
+                })
               }
             ]}
           >
             <CInput.Input
+              disabled={disabled || action === PageAction.EDIT}
               label={intl.formatMessage({ id: 'common.table.name' })}
               required
             />
           </Form.Item>
+          <Form.Item<FormData>
+            name="displayName"
+            rules={[
+              {
+                max: 63,
+                message: intl.formatMessage({
+                  id: 'gpuservice.template.displayName.max'
+                })
+              }
+            ]}
+          >
+            <CInput.Input
+              label={intl.formatMessage({
+                id: 'gpuservice.template.displayName'
+              })}
+              showCount
+              trim={false}
+              maxLength={63}
+            />
+          </Form.Item>
+          <PluginExtraFields
+            name="CreateOrgScopeField"
+            context={{ action, allowGlobal: true }}
+          />
           <Form.Item<FormData>
             name="manufacturer"
             rules={[
@@ -86,6 +125,7 @@ const Basic: React.FC<BasicProps> = ({ page = 'template', onceMaxRequest }) => {
             ]}
           >
             <SealSelect
+              disabled={disabled}
               label={intl.formatMessage({ id: 'resources.table.vendor' })}
               required
               options={[...manufacturerOptions, { label: 'CPU', value: 'cpu' }]}
@@ -104,12 +144,14 @@ const Basic: React.FC<BasicProps> = ({ page = 'template', onceMaxRequest }) => {
         ]}
       >
         <CInput.Input
+          disabled={disabled}
           label={intl.formatMessage({ id: 'gpuservice.template.image' })}
           required
         />
       </Form.Item>
       <Form.Item<FormData> name={['spec', 'imagePullPolicy']}>
         <SealSelect
+          disabled={disabled}
           label={intl.formatMessage({
             id: 'gpuservice.template.imagePullPolicy'
           })}
@@ -119,87 +161,59 @@ const Basic: React.FC<BasicProps> = ({ page = 'template', onceMaxRequest }) => {
           }))}
         />
       </Form.Item>
+      <div className={formStyles.command}>
+        <Form.Item<FormData>
+          name={['spec', 'command']}
+          normalize={normalizeCommand}
+          getValueProps={(value) => ({ value: stringifyCommand(value) })}
+        >
+          <Textarea
+            disabled={disabled}
+            label={intl.formatMessage({ id: 'gpuservice.template.command' })}
+            placeholder={intl.formatMessage({
+              id: 'gpuservice.template.command.placeholder'
+            })}
+            trim={false}
+            alwaysFocus
+            scaleSize
+          />
+        </Form.Item>
+      </div>
       <Form.Item<FormData>
-        name={['spec', 'command']}
-        normalize={normalizeCommand}
-        getValueProps={(value) => ({ value: stringifyCommand(value) })}
+        name={['spec', 'resources', 'localStorage']}
+        normalize={(value) => (value ? `${value}Gi` : undefined)}
+        getValueProps={(value) => ({
+          value: value ? String(value).replace(/Gi$/, '') : ''
+        })}
       >
-        <Textarea
-          label={intl.formatMessage({ id: 'gpuservice.template.command' })}
-          placeholder={intl.formatMessage({
-            id: 'gpuservice.template.command.placeholder'
+        <InputNumber
+          label={renderStorageLabel()}
+          description={intl.formatMessage({
+            id: 'gpuservice.template.containerDisk.tips'
           })}
-          trim={false}
-          alwaysFocus
-          scaleSize
+          min={0}
+          max={onceMaxRequest?.localStorage ?? undefined}
+          disabled={disabled}
         />
       </Form.Item>
-
-      <Flex gap={16}>
-        <div style={{ flex: 1 }}>
-          <Form.Item<FormData> name={['spec', 'volumeMount']}>
-            <CInput.Input
-              label={intl.formatMessage({
-                id: 'gpuservice.template.mountPath'
-              })}
-              placeholder={intl.formatMessage({
-                id: 'clusters.volume.mountPath.format'
-              })}
-            />
-          </Form.Item>
-        </div>
-        <div style={{ flex: 1 }}>
-          <Form.Item<FormData>
-            name={['spec', 'resources', 'localStorage']}
-            normalize={(value) => (value ? `${value}Gi` : undefined)}
-            getValueProps={(value) => ({
-              value: value ? String(value).replace(/Gi$/, '') : ''
+      {page === 'template' && (
+        <Form.Item<FormData> name={['spec', 'volumeMount']}>
+          <CInput.Input
+            label={intl.formatMessage({
+              id: 'gpuservice.template.mountPath'
             })}
-          >
-            <InputNumber
-              label={renderMaxLabel(
-                intl.formatMessage({ id: 'gpuservice.template.containerDisk' }),
-                onceMaxRequest?.localStorage
-              )}
-              max={onceMaxRequest?.localStorage ?? undefined}
-            />
-          </Form.Item>
-        </div>
-      </Flex>
-      <Flex gap={16}>
-        <div style={{ flex: 1 }}>
-          <Form.Item<FormData>
-            name={['spec', 'resources', 'cpu']}
-            normalize={(value) => (value ? `${value}` : '')}
-            getValueProps={(value) => ({ value: value ? String(value) : '' })}
-          >
-            <InputNumber
-              label={renderMaxLabel('CPU', onceMaxRequest?.cpu)}
-              max={onceMaxRequest?.cpu ?? undefined}
-            />
-          </Form.Item>
-        </div>
-        <div style={{ flex: 1 }}>
-          <Form.Item<FormData>
-            name={['spec', 'resources', 'ram']}
-            normalize={(value) => (value ? `${value}Gi` : undefined)}
-            getValueProps={(value) => ({
-              value: value ? String(value).replace(/Gi$/, '') : ''
+            description={intl.formatMessage({
+              id: 'gpuservice.template.mountPath.tips'
             })}
-          >
-            <InputNumber
-              label={renderMaxLabel(
-                intl.formatMessage({ id: 'gpuservice.template.memory' }),
-                onceMaxRequest?.memory
-              )}
-              max={onceMaxRequest?.memory ?? undefined}
-            />
-          </Form.Item>
-        </div>
-      </Flex>
-
-      <Ports />
-      <Env />
+            placeholder={intl.formatMessage({
+              id: 'clusters.volume.mountPath.format'
+            })}
+            disabled={disabled}
+          />
+        </Form.Item>
+      )}
+      <Ports disabled={disabled} />
+      <Env disabled={disabled} />
     </>
   );
 };

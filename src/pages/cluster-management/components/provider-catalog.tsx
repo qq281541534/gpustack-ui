@@ -1,3 +1,4 @@
+import { CheckOutlined } from '@ant-design/icons';
 import { IconFont, TemplateCard } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
 import { Tooltip } from 'antd';
@@ -62,13 +63,37 @@ const Header = styled.div`
 const CardBox = styled.div`
   display: flex;
   overflow: hidden;
+  position: relative;
+`;
+
+const ActiveBadge = styled.div`
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  background-color: var(--ant-color-primary);
+  clip-path: path('M 20 0 L 20 15 Q 20 20 15 20 L 0 20 Z');
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  pointer-events: none;
+
+  .anticon {
+    color: #fff;
+    font-size: 10px;
+    margin-right: 2px;
+    margin-bottom: 2px;
+  }
 `;
 
 interface ProviderCatalogProps {
   onSelect?: (provider: string, item: any) => void;
   groupIcons?: Record<string, string>;
   cols?: number;
-  current?: ProviderType | string;
+  // Single value (legacy) or array of selected keys for multi-select.
+  current?: ProviderType | string | string[];
   clickable?: boolean;
   height: string | number;
   showTooltip?: boolean;
@@ -149,12 +174,23 @@ const ProviderCatalog: React.FC<ProviderCatalogProps> = ({
                   <TemplateCard
                     height={height}
                     onClick={() => onSelect?.(action.key as string, action)}
-                    active={current === action.key}
+                    active={
+                      Array.isArray(current)
+                        ? current.includes(action.key)
+                        : current === action.key
+                    }
                     disabled={action.disabled}
                     clickable={clickable}
                     header={renderTitle(action)}
                     icon={action.icon}
                   ></TemplateCard>
+                  {(Array.isArray(current)
+                    ? current.includes(action.key)
+                    : current === action.key) && (
+                    <ActiveBadge>
+                      <CheckOutlined />
+                    </ActiveBadge>
+                  )}
                 </CardBox>
               </Tooltip>
             ))}

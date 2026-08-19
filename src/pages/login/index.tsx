@@ -72,17 +72,26 @@ const Box = styled.div`
   flex-direction: column;
   justify-content: space-between;
   min-height: 100vh;
+  .ant-form-item-label {
+    line-height: 1;
+    padding-bottom: 4px;
+  }
+  .ant-form-item-label > label:after {
+    display: none;
+  }
+  .ant-form-item-label > label {
+    height: auto !important;
+  }
 `;
 
 const FormWrapper = styled.div`
   margin: 0 auto;
   margin-top: 50vh;
-  max-width: 440px;
+  width: 400px;
   transform: translateY(-50%);
   position: relative;
   z-index: 999;
   border-radius: var(--border-radius-modal);
-  width: max-content;
   height: max-content;
   max-height: 660px;
   padding: 40px;
@@ -121,8 +130,6 @@ const Login = () => {
     () => shouldUseCustomLogin?.(userSettings),
     [shouldUseCustomLogin, userSettings]
   );
-
-  console.log('useCustomLogin', useCustomLogin, userSettings);
 
   const gotoDefaultPage = async (info: any) => {
     if (!info || info?.require_password_change) {
@@ -206,6 +213,7 @@ const Login = () => {
         config={{
           apiBaseUrl: GPUSTACK_API_BASE_URL,
           theme: userSettings.theme,
+          iconUrl: '',
           isDarkTheme: userSettings.isDarkTheme,
           defaultColorPrimary: COLOR_PRIMARY
         }}

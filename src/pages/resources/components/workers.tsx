@@ -32,9 +32,10 @@ import WorkerRightActions from './worker-right-actions';
 // inside.
 interface WorkersProps {
   clusterId?: number;
+  source?: 'clusterDetail';
 }
 
-const Workers: React.FC<WorkersProps> = ({ clusterId }) => {
+const Workers: React.FC<WorkersProps> = ({ clusterId, source }) => {
   const {
     dataSource,
     rowSelection,
@@ -102,8 +103,14 @@ const Workers: React.FC<WorkersProps> = ({ clusterId }) => {
 
   const getClusterList = async () => {
     try {
+      // Own-org clusters only (mine=true). A worker can only join a cluster
+      // its org owns, so another org's cluster (e.g. the Default org's
+      // "shared with everyone" clusters) must not be offered in the picker.
+      // The worker list is owner-scoped too, so this list also covers every
+      // cluster the table's name column can reference.
       const params = {
-        page: -1
+        page: -1,
+        mine: true
       };
       const items = await fetchClusterList(params);
       const clusterMap = items?.reduce(
@@ -248,6 +255,7 @@ const Workers: React.FC<WorkersProps> = ({ clusterId }) => {
     loadend: dataSource.loadend,
     firstLoad: extraStatus.firstLoad,
     sortOrder,
+    source,
     handleSelect
   });
 
@@ -260,7 +268,7 @@ const Workers: React.FC<WorkersProps> = ({ clusterId }) => {
     <>
       <PageBox>
         <FilterBar
-          showSelect={!clusterId}
+          showSelect={source !== 'clusterDetail'}
           selectHolder={intl.formatMessage({ id: 'clusters.filterBy.cluster' })}
           marginBottom={22}
           marginTop={30}
@@ -272,21 +280,31 @@ const Workers: React.FC<WorkersProps> = ({ clusterId }) => {
           handleInputChange={handleNameChange}
           rowSelection={rowSelection}
           selectOptions={clusterData.list}
+          widths={
+            source !== 'clusterDetail'
+              ? { select: 230, input: 230 }
+              : { input: 300 }
+          }
           right={
-            <WorkerRightActions
-              handleDeleteByBatch={handleDeleteBatch}
-              handleClickPrimary={handleOnAddWorker}
-              rowSelection={rowSelection}
-              MonitorButton={ActionButton()}
-            ></WorkerRightActions>
+            source === 'clusterDetail' ? (
+              <></>
+            ) : (
+              <WorkerRightActions
+                handleDeleteByBatch={handleDeleteBatch}
+                handleClickPrimary={handleOnAddWorker}
+                rowSelection={rowSelection}
+                MonitorButton={ActionButton()}
+              ></WorkerRightActions>
+            )
           }
         ></FilterBar>
         <ConfigProvider renderEmpty={renderEmpty}>
           <Table
+            tableLayout="auto"
             columns={columns}
             sortDirections={TABLE_SORT_DIRECTIONS}
             showSorterTooltip={false}
-            tableLayout={'auto'}
+            scroll={{ x: 'max-content' }}
             className={'scroll-table'}
             dataSource={dataSource.dataList}
             loading={{
@@ -294,9 +312,8 @@ const Workers: React.FC<WorkersProps> = ({ clusterId }) => {
               size: 'middle'
             }}
             rowKey="id"
-            scroll={{ x: 900 }}
             onChange={handleTableChange}
-            rowSelection={rowSelection}
+            rowSelection={source === 'clusterDetail' ? undefined : rowSelection}
             pagination={{
               size: 'middle',
               showSizeChanger: true,

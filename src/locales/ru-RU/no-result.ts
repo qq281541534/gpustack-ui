@@ -37,9 +37,12 @@ export default {
   'noresult.catalog.nofound': 'Подходящие модели не найдены.',
   'noresult.resources.cluster':
     'No clusters available. Add a cluster to get started.',
+  'noresult.resources.k8sCluster':
+    'No clusters available. Add a Kubernetes cluster to get started.',
   'noresult.resources.worker':
     'No workers available. Add a worker to get started.',
   'noresult.resources.gotocluster': 'Create Your First Cluster',
+  'noresult.resources.addk8scluster': 'Add a Kubernetes Cluster',
   'noresult.resources.gotoworker': 'Add Worker',
   'noresult.benchmark.title': 'No Benchmarks',
   'noresult.benchmark.subTitle': 'No benchmarks have been added yet.',
@@ -65,7 +68,15 @@ export default {
     'Подходящие экземпляры GPU не найдены.',
   'noresult.gpuservice.storage.title': 'Нет хранилищ',
   'noresult.gpuservice.storage.subTitle': 'Хранилища ещё не добавлены.',
-  'noresult.gpuservice.storage.nofound': 'Подходящие хранилища не найдены.'
+  'noresult.gpuservice.storage.nofound': 'Подходящие хранилища не найдены.',
+  'noresult.gpuservice.storageType.title': 'Нет типов хранилищ',
+  'noresult.gpuservice.storageType.subTitle': 'Типы хранилищ ещё не добавлены.',
+  'noresult.gpuservice.storageType.nofound':
+    'Подходящие типы хранилищ не найдены.',
+  'noresult.gpuservice.sshkey.title': 'Нет открытых ключей SSH',
+  'noresult.gpuservice.sshkey.subTitle': 'Открытые ключи SSH ещё не добавлены.',
+  'noresult.gpuservice.sshkey.nofound':
+    'Подходящие открытые ключи SSH не найдены.'
 };
 
 // ========== To-Do: Translate Keys (Remove After Translation) ==========

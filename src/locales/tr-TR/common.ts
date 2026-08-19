@@ -46,22 +46,28 @@ export default {
   'common.button.enabled': 'Etkin',
   'common.button.disabled': 'Devre dışı',
   'common.button.upgrade': 'Yükselt',
+  'common.enterprise.feature': 'Available in GPUStack Enterprise',
   'common.input.holder': 'Lütfen girin',
   'common.validate.value': '{name} değeri gereklidir',
   'common.button.edit': 'Düzenle',
   'common.button.authorize': 'Rol Yetkilendirme',
   'common.button.confirm': 'Onayla',
   'common.button.viewlog': 'Günlükleri Görüntüle',
+  'common.button.viewevent': 'Olayları Görüntüle',
+  'common.button.recreate': 'Yeniden Oluştur',
   'common.table.operation': 'İşlemler',
+  'common.table.creator': 'Oluşturan',
   'common.table.createTime': 'Oluşturulma',
   'common.table.updateTime': 'Güncellenme',
   'common.table.description': 'Açıklama',
+  'common.table.displayName': 'Görünen Ad',
   'common.table.name': 'Ad',
   'common.table.status': 'Durum',
   'common.table.name.list': '{type} Adı',
   'common.search.name.placeholder': 'ada göre filtrele',
   'common.search.id.placeholder': 'kimliğe göre filtrele',
   'common.filter.byId': 'kimliğe göre filtrele',
+  'common.filter.byCreator': 'Oluşturana göre filtrele',
   'common.table.type': 'Tür',
   'common.table.default': 'Varsayılan Değer',
   'common.copy.success': 'Kopyalama başarılı!',
@@ -161,6 +167,7 @@ export default {
   'common.time.hour': 'saat',
   'common.time.minute': 'dakika',
   'common.issue.report': 'Sorun bildir',
+  'common.github.star.tooltip': "GitHub'da bize yıldız verin",
   'common.social.discord': "Discord'umuza Katılın",
   'common.table.mark': 'Yorum',
   'common.table.rollback.mark': 'Geri Alma Yorumu',
@@ -192,6 +199,7 @@ export default {
   'common.table.user': 'Kullanıcı',
   'common.settings.instructions': 'Talimatlar',
   'common.settings.language': 'Dil',
+  'common.settings.language.tips': 'Arayüzün görüntüleme dilini ayarlayın.',
   'common.delete.confirm':
     'Seçili {type} öğesini silmek istediğinizden emin misiniz?',
   'common.delete.single.confirm':
@@ -226,7 +234,6 @@ export default {
   'common.text.latest': 'En Son',
   'common.text.new': 'Yeni',
   'common.text.changelog': 'Sürüm Notları',
-  'common.button.recreate': 'Yeniden oluştur',
   'common.button.delrecreate': 'Sil (Yeniden oluştur)',
   'common.options.all': 'Tümü',
   'common.options.none': 'Hiçbiri',
@@ -248,6 +255,11 @@ export default {
   'common.appearance.tips': 'Varsayılan olarak sistem tercihini takip eder.',
   'common.button.forgotpassword': 'Şifrenizi mi unuttunuz?',
   'common.appearance.theme': 'Tema',
+  'common.appearance.description':
+    'Arayüzün cihazınızdaki görünümünü özelleştirin.',
+  'common.security': 'Güvenlik',
+  'common.security.description':
+    'Hesabınıza giriş yapmak için kullanılan parolayı yönetin.',
   'common.page.wentwrong': 'Bir şeyler ters gitti.',
   'common.page.refresh.tips':
     'Sayfanın güncellenmesi gerekebilir. Yenilemeyi deneyin!',
@@ -257,7 +269,15 @@ export default {
   'common.select.count': '{count} seçildi',
   'common.login.auth': 'Kimlik doğrulanıyor...',
   'common.login.auth.failed': 'Kimlik doğrulama başarısız',
+  'common.login.error.source_conflict':
+    'Bu kullanıcı adıyla farklı bir kimlik doğrulama kaynağından bir hesap zaten mevcut. Bağlamak veya dönüştürmek için lütfen yöneticinize başvurun.',
+  'common.login.error.auth_failed':
+    'Kimlik sağlayıcısı ile kimlik doğrulama başarısız oldu. Lütfen tekrar deneyin veya yöneticinize başvurun.',
   'common.login.password': 'Şifre ile giriş yap',
+  'common.login.username.holder': 'Lütfen kullanıcı adını girin',
+  'common.login.password.holder': 'Lütfen şifreyi girin',
+  'common.login.newpassword.holder': 'Lütfen yeni şifreyi girin',
+  'common.login.confirm.holder': 'Lütfen şifreyi tekrar girin',
   'common.external.login': '{type} ile giriş yap',
   'common.sso.noConfig':
     'Bu sistemde çoklu oturum açma etkinleştirilmemiş. Lütfen yöneticinize başvurun.',
@@ -284,5 +304,9 @@ export default {
   'common.file.format.limit': 'Invalid file format. Allowed: {formats}.',
   'common.image.limit.width': 'Image width must be {width}.',
   'common.image.limit.height': 'Image height must be {height}.',
-  'common.max': 'Maks. {count}'
+  'common.remaining': 'Kalan {count}',
+  'common.max': 'Maks. {count}',
+  'common.max.count': '{label} Sayısı',
+  'common.validate.group': 'Please complete the {group} configuration',
+  'common.preferences': 'Tercihler'
 };

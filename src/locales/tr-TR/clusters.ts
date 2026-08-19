@@ -39,9 +39,13 @@ export default {
   'clusters.workerpool.batchSize.desc':
     'İşçi havuzunda eşzamanlı olarak oluşturulan işçi düğüm sayısı',
   'clusters.create.addworker.tips':
-    'Aşağıdaki komutu çalıştırmadan önce lütfen {label} için <a href={link} target="_blank">ön koşulların</a> karşılandığından emin olun.',
+    'Aşağıdaki komutu çalıştırmadan önce lütfen <a href={link} target="_blank">ön koşulların</a> karşılandığından emin olun.',
   'clusters.create.addCommand.tips':
     'Eklenmesi gereken İşçi Düğümde, kümeye katılması için aşağıdaki komutu çalıştırın.',
+  'clusters.create.addCommand.k8s.tips':
+    'Kaydedilmesi gereken Kubernetes kümesinde, Kubernetes kaynaklarını oluşturmak ve kümeyi kaydetmek için aşağıdaki komutu çalıştırın.',
+  'clusters.create.addCommand.k8s.version.warning':
+    'Desteklenen minimum Kubernetes sürümü 1.23’tür. GPU Service özelliğini kullanmak için desteklenen minimum Kubernetes sürümü 1.27’dir.',
   'clusters.create.register.tips':
     'Eklenmesi gereken Kubernetes kümesinde, düğümlerini kümeye katılması için aşağıdaki komutu çalıştırın.',
   'cluster.create.checkEnv.tips':
@@ -67,8 +71,14 @@ export default {
   'clusters.addworker.selectCluster.tips':
     '<span class="bold-text">Docker dışı</span> kümeler için lütfen Kümeler sayfasından küme kaydı oluşturun veya işçi havuzlarını yönetin.',
   'clusters.addworker.selectGPU': 'GPU Üreticisi Seç',
+  'clusters.addworker.selectGPU.multiTag': 'Multi-select',
+  'clusters.addworker.selectGPU.subtitle':
+    'Birden fazla GPU Üreticisi seçebilir veya yalnızca CPU kümeleri için hiçbirini seçmeyebilirsiniz',
   'clusters.addworker.checkEnv': 'Ortamı Kontrol Et',
+  'clusters.addworker.checkEnv.cpuOnlyTips':
+    'Kubernetes kümesinde en az bir hazır düğüm olduğunu doğrulamak için aşağıdaki komutu kullanın. Yalnızca CPU kümelerini kaydediyorsunuz.',
   'clusters.addworker.specifyArgs': 'Argümanları Belirle',
+  'clusters.addworker.dtkVersion': 'DTK Sürümü',
   'clusters.addworker.runCommand': 'Komutu Çalıştır',
   'clusters.addworker.specifyWorkerIP': "İşçi Düğüm IP'si",
   'clusters.addworker.detectWorkerIP': "İşçi Düğüm IP'sini Otomatik Algıla",
@@ -107,6 +117,8 @@ export default {
     '{count} yeni işçi düğüm kümeye eklendi.',
   'clusters.create.serverUrl': "GPUStack Sunucu URL'si",
   'clusters.create.workerConfig': 'İşçi Düğüm Yapılandırması',
+  'clusters.edit.k8sOptions.changed.tip':
+    'Kubernetes seçeneklerini değiştirdiniz. Değişikliklerin etkili olması için kayıt komutunu hedef kümede yeniden çalıştırın.',
   'clusters.addworker.containerName': 'İşçi Düğüm Konteyner Adı',
   'clusters.addworker.containerName.tips':
     'İşçi düğüm konteyneri için bir ad belirtin.',
@@ -135,7 +147,7 @@ export default {
   'clusters.addworker.theadNotes-02':
     'T-Head PPU, cihaz enjeksiyonu için Container Device Interface (CDI) kullanır ve CDI oluşturma için <span class="bold-text">/var/run/cdi</span> dizininin kullanılabilir olmasını gerektirir.',
   'clusters.addworker.nvidiaNotes':
-    'GPUStack v2.1\'deki yerleşik çıkarım altyapıları <span class="bold-text">CUDA 12.6+</span> gerektirir. Lütfen NVIDIA sürücü sürümünüzün <span class="bold-text">560</span> veya daha yeni olduğundan emin olun.',
+    'GPUStack\'teki yerleşik çıkarım altyapıları <span class="bold-text">CUDA 12.8+</span> gerektirir. Lütfen NVIDIA sürücü sürümünüzün <span class="bold-text">570</span> veya daha yeni olduğundan emin olun.',
   'clusters.volume.title': 'Volume Mounts',
   'clusters.volume.name': 'Volume Name',
   'clusters.volume.mountPath': 'Container Path',
@@ -159,5 +171,33 @@ export default {
   'clusters.volume.pvc.readOnly': 'Read Only',
   'clusters.volume.configMap.name': 'ConfigMap Name',
   'clusters.volume.configMap.optional': 'Optional',
-  'clusters.volume.add': 'Add Volume Mount'
+  'clusters.volume.add': 'Add Volume Mount',
+  'clusters.systemDefaultContainerRegistry.title': 'Default Container Registry',
+  'clusters.systemDefaultContainerRegistry.tip':
+    'Default registry used to resolve GPUStack images for this cluster. Falls back to the server default when unset.',
+  'clusters.k8sOptions.title': 'Kubernetes Deployment Options',
+  'clusters.imageCredentials.title': 'Image Credentials',
+  'clusters.imageCredentials.add': 'Add Credential',
+  'clusters.imageCredentials.registry': 'Registry',
+  'clusters.imageCredentials.username': 'Username',
+  'clusters.imageCredentials.password': 'Password',
+  'clusters.nodeSelector.title': 'Node Selector',
+  'clusters.nodeSelector.tip':
+    'Pod nodeSelector applied to every worker DaemonSet — only nodes whose labels match are eligible to run the worker.',
+  'clusters.operatorImage.title': 'Operator Image',
+  'clusters.operatorImage.tip':
+    'Override for the GPUStack Operator container image. Leave empty to use the server default.',
+  'clusters.namespace.title': 'Namespace',
+  'clusters.namespace.tip':
+    'Kubernetes namespace the cluster’s manifests render into. Leave empty to use gpustack-system.',
+  'clusters.clusterType.title': 'Cluster Type',
+  'clusters.modelService.title': 'Model Service',
+  'clusters.modelService.tip':
+    'For LLM inference and API serving — e.g. exposing model APIs and token-based services.',
+  'clusters.gpuInstances.title': 'GPU Service',
+  'clusters.gpuInstances.tip':
+    'For on-demand GPU compute — e.g. interactive development, training jobs, or custom environments.',
+  'clusters.gpuInstances.staticAddress': 'GPU Service Static Access Address',
+  'clusters.gpuInstances.staticAddress.tip':
+    'Static address the operator uses to access GPU instances in this cluster (e.g. a LoadBalancer VIP). Optional.'
 };

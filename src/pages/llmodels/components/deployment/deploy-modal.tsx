@@ -2,17 +2,17 @@ import { getRequestId } from '@/atoms/models';
 import { PageActionType } from '@/config/types';
 import useDeferredRequest from '@/hooks/use-deferred-request';
 import { ClusterStatusValueMap } from '@/pages/cluster-management/config';
-import { GSDrawer, ModalFooter } from '@gpustack/core-ui';
+import { ColumnWrapper, GSDrawer, ModalFooter } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
 import { useMemoizedFn } from 'ahooks';
 import { Button } from 'antd';
 import _ from 'lodash';
 import { FC, useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
-import ColumnWrapper from '../../../_components/column-wrapper';
 import {
   defaultFormValues,
   DeployFormKeyMap,
+  mergeBackendParameters,
   modelSourceMap
 } from '../../config';
 import { FormData, SourceType } from '../../config/types';
@@ -78,7 +78,12 @@ type AddModalProps = {
   deploymentType?: 'modelList' | 'modelFiles';
   clusterList: Global.BaseOption<
     number,
-    { provider: string; state: string | number; is_default: boolean }
+    {
+      provider: string;
+      state: string | number;
+      is_default: boolean;
+      owner_principal_id?: number;
+    }
   >[];
   onOk: (values: FormData) => void;
   onCancel: () => void;
@@ -104,6 +109,7 @@ const AddModal: FC<AddModalProps> = (props) => {
     width = 600,
     deploymentType = 'modelList',
     initialValues,
+    isGGUF: isGGUFProp,
     clusterList
   } = props || {};
   const SEARCH_SOURCE = [
@@ -139,6 +145,8 @@ const AddModal: FC<AddModalProps> = (props) => {
   const requestModelIdRef = useRef<number>(0);
   const currentSelectedModel = useRef<any>({});
   const flatBackendOptionsRef = useRef<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const submitloadingRef = useRef<boolean>(false);
 
   const { run: fetchModelFiles } = useDeferredRequest(
     () => modelFileRef.current?.fetchModelFiles?.(),
@@ -342,6 +350,7 @@ const AddModal: FC<AddModalProps> = (props) => {
       env: {
         ...modelInfo.env
       },
+      backend_parameters: [...modelInfo.backend_parameters],
       name: generateNameValue(item, modelInfo.name, manual),
       categories: getCategory(item)
     });
@@ -399,6 +408,10 @@ const AddModal: FC<AddModalProps> = (props) => {
           ...modelInfo.env,
           ...defaultSpec.env
         },
+        backend_parameters: mergeBackendParameters(
+          modelInfo.backend_parameters,
+          defaultSpec.backend_parameters
+        ),
         name: generateNameValue(item, modelInfo.name, manual),
         categories: getCategory(item)
       };
@@ -410,20 +423,31 @@ const AddModal: FC<AddModalProps> = (props) => {
   };
 
   const handleOnOk = async (allValues: FormData) => {
-    onOk(allValues);
+    setLoading(true);
+    await onOk(allValues);
+    setLoading(false);
+    submitloadingRef.current = false;
+  };
+
+  const handleSumit = () => {
+    if (submitloadingRef.current) {
+      return;
+    }
+    submitloadingRef.current = true;
+    form.current?.submit?.();
   };
 
   const handleSubmitAnyway = async () => {
     submitAnyway.current = true;
-    form.current?.submit?.();
-  };
-
-  const handleSumit = () => {
-    form.current?.submit?.();
+    handleSumit();
   };
 
   const handleSetIsGGUF = async (flag: boolean) => {
     setIsGGUF(flag);
+  };
+
+  const onFinishFailed = () => {
+    submitloadingRef.current = false;
   };
 
   const handleBackendChange = async (backend: string) => {
@@ -457,15 +481,24 @@ const AddModal: FC<AddModalProps> = (props) => {
     if (initialValues?.cluster_id) {
       return initialValues.cluster_id;
     }
+    // When a platform admin has targeted an org via the create-scope picker,
+    // seed the cluster from that org's own clusters so the initial selection
+    // matches the (org-filtered) dropdown the form renders.
+    const scopeOrgId = form.current?.getFieldValue?.('organization_id');
+    const scopedList =
+      scopeOrgId == null
+        ? clusterList
+        : clusterList?.filter((item) => item.owner_principal_id === scopeOrgId);
+
     // Find default cluster
-    const defaultCluster = clusterList?.find((item) => item.is_default);
+    const defaultCluster = scopedList?.find((item) => item.is_default);
     if (defaultCluster) {
       return defaultCluster.value;
     }
 
     const cluster_id =
-      clusterList?.find((item) => item.state === ClusterStatusValueMap.Ready)
-        ?.value || clusterList?.[0]?.value;
+      scopedList?.find((item) => item.state === ClusterStatusValueMap.Ready)
+        ?.value || scopedList?.[0]?.value;
 
     return cluster_id;
   };
@@ -543,6 +576,7 @@ const AddModal: FC<AddModalProps> = (props) => {
 
   useEffect(() => {
     if (open) {
+      setIsGGUF(isGGUFProp || false);
       handleOnOpen();
     } else {
       cancelEvaluate();
@@ -556,7 +590,7 @@ const AddModal: FC<AddModalProps> = (props) => {
         message: []
       });
     };
-  }, [open, clusterList, initialValues?.cluster_id]);
+  }, [open, clusterList, initialValues?.cluster_id, isGGUFProp]);
 
   return (
     <GSDrawer
@@ -638,6 +672,7 @@ const AddModal: FC<AddModalProps> = (props) => {
                 <ModalFooter
                   onCancel={handleCancel}
                   onOk={handleSumit}
+                  loading={loading}
                   showOkBtn={!showExtraButton}
                   extra={
                     showExtraButton && (
@@ -669,6 +704,7 @@ const AddModal: FC<AddModalProps> = (props) => {
                 onOk={handleOnOk}
                 ref={form}
                 isGGUF={isGGUF}
+                onFinishFailed={onFinishFailed}
                 onBackendChange={handleBackendChange}
                 onValuesChange={onValuesChange}
                 clearCacheFormValues={clearCacheFormValues}

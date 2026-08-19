@@ -1,9 +1,15 @@
-import { getCurrentOrganizationId } from '@/atoms/user';
-import { InputNumber as CInputNumber, Select } from '@gpustack/core-ui';
+import { PageAction } from '@/config';
+import { PlusOutlined } from '@ant-design/icons';
+import {
+  Input as CInput,
+  InputNumber as CInputNumber,
+  LabelInfo,
+  Select,
+  useAppUtils
+} from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
 import { Button, Flex, Form, Radio } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import styled from 'styled-components';
 import { FormData as StorageFormData } from '../../storage/config/types';
 import useCreateStorage from '../../storage/services/use-create-storage';
 import useQueryStorage from '../../storage/services/use-query-storage';
@@ -11,58 +17,72 @@ import { StorageModeValueMap } from '../config';
 import { FormData } from '../config/types';
 import StorageOverlay from './storage-overlay';
 
-const FieldBlock = styled.div`
-  margin-bottom: 24px;
-`;
-
 const DEFAULT_TEMP_CAPACITY_GB = 50;
 
-const StorageVolume = () => {
+const StorageVolume = ({
+  disabled,
+  action
+}: {
+  disabled?: boolean;
+  action: PageActionType;
+}) => {
   const intl = useIntl();
+  const { getRuleMessage } = useAppUtils();
+  const form = Form.useFormInstance<FormData>();
+  const storageMode = Form.useWatch('storageMode', form);
+  // Owned by the instance create-scope picker (platform admin "All" view).
+  // A storage added inline belongs to the same org as the instance, so pass
+  // it to the overlay to scope the storage-type list to that org.
+  const scopeOrgId = Form.useWatch('organization_id', form);
   const { fetchData: createStorage } = useCreateStorage();
   const { detailData: storageData, fetchData: fetchStorage } =
     useQueryStorage();
   const [overlayOpen, setOverlayOpen] = useState(false);
-  const [storageMode, setStorageMode] = useState<string>(
-    StorageModeValueMap.Temporary
-  );
-
-  const form = Form.useFormInstance<FormData>();
-
-  const namespace = getCurrentOrganizationId();
 
   useEffect(() => {
-    fetchStorage({});
+    const initStorage = async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 200);
+      });
+      fetchStorage({ page: -1 });
+    };
+    initStorage();
   }, []);
 
   const storageOptions = useMemo(
     () =>
       (storageData?.items || []).map((item) => ({
-        label: `${item.metadata?.name} / ${item.spec?.capacity ?? '-'}`,
-        value: item.metadata?.name
+        label: `${item.displayName || item.name} / ${item.spec?.capacity ?? '-'}`,
+        value: item.name
       })),
     [storageData]
   );
 
-  const handleModeChange = (mode: string) => {
-    console.log('selected storage mode', mode);
-    if (mode === StorageModeValueMap.Existing) {
-      form.setFieldValue(['spec', 'volume'], { persistent: { name: '' } });
-    } else {
-      form.setFieldValue(['spec', 'volume'], {
-        ephemeral: { capacity: `${DEFAULT_TEMP_CAPACITY_GB}Gi` }
-      });
+  const applyMode = (mode: string) => {
+    if (mode === StorageModeValueMap.Temporary) {
+      form.setFieldValue(
+        ['spec', 'volume', 'ephemeral', 'capacity'],
+        form.getFieldValue(['spec', 'volume', 'ephemeral', 'capacity']) ||
+          DEFAULT_TEMP_CAPACITY_GB
+      );
+      return;
     }
-    setStorageMode(mode);
+    form.setFieldValue(
+      ['spec', 'volume', 'persistent', 'name'],
+      form.getFieldValue(['spec', 'volume', 'persistent', 'name']) ||
+        (storageOptions[0]?.value as string)
+    );
+  };
+
+  const handleModeChange = (mode: string) => {
+    applyMode(mode);
   };
 
   const handleCreateStorage = async (values: StorageFormData) => {
     try {
       await createStorage({ data: values });
-      await fetchStorage({});
-      form.setFieldValue(['spec', 'volume'], {
-        persistent: { name: values.metadata.name }
-      });
+      await fetchStorage({ page: -1 });
+      form.setFieldValue(['spec', 'volume', 'persistent', 'name'], values.name);
       setOverlayOpen(false);
     } catch (error) {
       // ignore
@@ -70,62 +90,69 @@ const StorageVolume = () => {
   };
 
   return (
-    <FieldBlock data-field="storage">
+    <>
+      <div data-field="storage"></div>
       <Flex
-        style={{
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 6
-        }}
+        align="center"
+        justify="space-between"
+        style={{ marginBottom: 16, paddingTop: 8 }}
       >
-        <Radio.Group
-          style={{ marginBottom: 12 }}
-          value={storageMode}
-          onChange={(e) => handleModeChange(e.target.value)}
-          options={[
-            {
-              label: intl.formatMessage({ id: 'gpuservice.storage.temporary' }),
-              value: StorageModeValueMap.Temporary
-            },
-            {
-              label: intl.formatMessage({
-                id: 'gpuservice.storage.persistent'
-              }),
-              value: StorageModeValueMap.Existing
-            }
-          ]}
-        />
-        <Button
-          type="link"
-          size="small"
-          style={{ marginBottom: 6 }}
-          onClick={() => setOverlayOpen(true)}
-        >
-          {intl.formatMessage({ id: 'gpuservice.storage.add' })}
-        </Button>
-      </Flex>
-
-      {storageMode === StorageModeValueMap.Existing && (
-        <Form.Item
-          name={['spec', 'volume', 'persistent', 'name']}
-          rules={[
-            {
-              required: true,
-              message: intl.formatMessage({
-                id: 'gpuservice.storage.persistentVolume.required'
-              })
-            }
-          ]}
-        >
-          <Select
-            label={intl.formatMessage({
-              id: 'gpuservice.storage.persistentVolume'
-            })}
-            required
-            options={storageOptions}
+        <Form.Item name="storageMode" noStyle>
+          <Radio.Group
+            disabled={disabled}
+            value={storageMode}
+            style={{ display: 'flex', gap: 12 }}
+            onChange={(e) => handleModeChange(e.target.value)}
+            options={[
+              {
+                label: (
+                  <LabelInfo
+                    description={intl.formatMessage({
+                      id: 'gpuservice.storage.temporary.tips'
+                    })}
+                    label={
+                      <span className="text-primary">
+                        {intl.formatMessage({
+                          id: 'gpuservice.storage.temporary'
+                        })}
+                      </span>
+                    }
+                  />
+                ),
+                value: StorageModeValueMap.Temporary
+              },
+              {
+                label: (
+                  <LabelInfo
+                    description={intl.formatMessage({
+                      id: 'gpuservice.storage.persistentVolume.tips'
+                    })}
+                    label={
+                      <span className="text-primary">
+                        {intl.formatMessage({
+                          id: 'gpuservice.storage.persistentVolume'
+                        })}
+                      </span>
+                    }
+                  />
+                ),
+                value: StorageModeValueMap.Persistent
+              }
+            ]}
           />
         </Form.Item>
-      )}
+        {action === PageAction.CREATE &&
+          storageMode === StorageModeValueMap.Persistent && (
+            <Button
+              type="link"
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={() => setOverlayOpen(true)}
+            >
+              {intl.formatMessage({ id: 'gpuservice.storage.add' })}
+            </Button>
+          )}
+      </Flex>
 
       {storageMode === StorageModeValueMap.Temporary && (
         <Form.Item
@@ -146,6 +173,7 @@ const StorageVolume = () => {
           ]}
         >
           <CInputNumber
+            disabled={disabled}
             min={1}
             precision={0}
             label={intl.formatMessage({
@@ -156,13 +184,63 @@ const StorageVolume = () => {
         </Form.Item>
       )}
 
+      {storageMode === StorageModeValueMap.Persistent && (
+        <>
+          <Form.Item
+            name={['spec', 'volume', 'persistent', 'name']}
+            rules={[
+              {
+                required: true,
+                message: intl.formatMessage({
+                  id: 'gpuservice.storage.persistentVolume.required'
+                })
+              }
+            ]}
+          >
+            <Select
+              disabled={disabled}
+              showSearch
+              label={intl.formatMessage({
+                id: 'gpuservice.form.storage.select'
+              })}
+              required
+              options={storageOptions}
+            />
+          </Form.Item>
+        </>
+      )}
+
+      <Form.Item<FormData>
+        name={['spec', 'volumeMount']}
+        style={{
+          marginBottom: 12
+        }}
+        rules={[
+          {
+            required: true,
+            message: getRuleMessage('input', 'gpuservice.template.mountPath')
+          }
+        ]}
+      >
+        <CInput.Input
+          required
+          label={intl.formatMessage({
+            id: 'gpuservice.template.mountPath'
+          })}
+          placeholder={intl.formatMessage({
+            id: 'clusters.volume.mountPath.format'
+          })}
+          disabled={disabled}
+        />
+      </Form.Item>
+
       <StorageOverlay
         open={overlayOpen}
-        namespace={namespace}
+        scopeOrgId={scopeOrgId}
         onCancel={() => setOverlayOpen(false)}
         onSubmit={handleCreateStorage}
       />
-    </FieldBlock>
+    </>
   );
 };
 

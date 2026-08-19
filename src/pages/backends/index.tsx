@@ -237,6 +237,10 @@ const BackendList = () => {
     });
   });
 
+  const handleRefresh = () => {
+    fetchData({ query: { ...queryParams, page: 1 } });
+  };
+
   return (
     <PageBox>
       <FilterBar
@@ -251,7 +255,7 @@ const BackendList = () => {
         selectHolder={intl.formatMessage({ id: 'backend.filter.source' })}
         buttonText={intl.formatMessage({ id: 'backend.button.add' })}
         handleClickPrimary={handleAddBackend}
-        handleSearch={handleSearch}
+        handleSearch={handleRefresh}
         handleSelectChange={handleFilterBySource}
         handleInputChange={handleNameChange}
         rowSelection={rowSelection}
@@ -278,6 +282,7 @@ const BackendList = () => {
           onSelect={handleOnSelect}
         ></BackendCardList>
         <NoResult
+          minHeight="calc(100vh - 300px)"
           loading={dataSource.loading}
           loadend={dataSource.loadend}
           dataSource={dataSource.dataList}

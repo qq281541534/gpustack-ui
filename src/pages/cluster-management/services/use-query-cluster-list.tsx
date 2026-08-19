@@ -14,7 +14,7 @@ export const useQueryClusterList = (options?: { useStateData?: boolean }) => {
   const { useStateData = true } = options || {};
   const axiosTokenRef = useRef<CancelTokenSource | null>(null);
   const [dataList, setDataList] = useState<
-    Array<Partial<ClusterListItem> & { label: string; value: number }>
+    Array<ClusterListItem & { label: string; value: number }>
   >([]);
 
   const {
@@ -22,7 +22,12 @@ export const useQueryClusterList = (options?: { useStateData?: boolean }) => {
     loading,
     cancel
   } = useRequest(
-    async (params: { page: number; perPage?: number }) => {
+    async (params: {
+      page: number;
+      perPage?: number;
+      mine?: boolean;
+      gpu_instance_enabled?: boolean;
+    }) => {
       axiosTokenRef.current?.cancel();
       axiosTokenRef.current = createAxiosToken();
       const res = await queryClusterList(params, {

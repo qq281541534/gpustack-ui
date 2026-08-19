@@ -1,13 +1,14 @@
-import { AutoTooltip, IconFont, StatusTag, ThemeTag } from '@gpustack/core-ui';
+import PluginExtraFields from '@/components/plugin-extra-fields';
+import { AutoTooltip, IconFont, ThemeTag } from '@gpustack/core-ui';
 import { useIntl } from '@umijs/max';
-import { Flex } from 'antd';
+import { Flex, Tag } from 'antd';
+import _ from 'lodash';
 import styled from 'styled-components';
-import {
-  convertKiToGi,
-  InstanceTypePhaseLabelMap,
-  InstanceTypePhaseStatus
-} from '../config';
+import { manufactureColorMap } from '../../templates/config';
+import { formatMemoryDisplay } from '../config';
 import { InstanceTypeItem as InstanceTypeItemModel } from '../config/types';
+
+const Vendors = ['intel'] as const;
 
 const Title = styled.div`
   display: flex;
@@ -19,30 +20,31 @@ const Title = styled.div`
   font-weight: 500;
 `;
 
-const Meta = styled.div`
+const Meta = styled.div<{ $columns?: number }>`
   display: grid;
-  gap: 8px;
-  color: var(--ant-color-text-secondary);
+  grid-template-columns: repeat(${(props) => props.$columns ?? 7}, auto);
+  grid-auto-rows: minmax(15px, auto);
+  justify-content: start;
+  column-gap: 4px;
+  row-gap: 8px;
+  align-items: center;
+  color: var(--ant-color-text-tertiary);
   font-size: 13px;
 
-  .meta-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--ant-color-text-tertiary);
-  }
   .dot {
     width: 3px;
     height: 3px;
     border-radius: 50%;
     background-color: var(--ant-color-text-quaternary);
-    flex: none;
+    margin: 0 4px;
+    justify-self: center;
   }
 
-  .meta-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+  .meta-label {
+    font-size: 12px;
+  }
+  .meta-value {
+    font-size: 12px;
   }
 
   .meta-icon {
@@ -53,124 +55,231 @@ const Meta = styled.div`
 
 interface InstanceTypeItemProps {
   item: InstanceTypeItemModel;
-  showStatus?: boolean;
 }
 
-const InstanceTypeItem: React.FC<InstanceTypeItemProps> = ({
-  item,
-  showStatus = true
-}) => {
-  const intl = useIntl();
-  const name = item.metadata?.name;
-  const acceleratable = item.spec?.acceleratable;
-  const product = item.spec?.product;
-  const displayName = product || (!acceleratable ? 'CPU' : name);
-  const manufacturer = item.spec?.manufacturer?.toUpperCase();
+interface MetadataSectionProps {
+  spec: InstanceTypeItemModel['spec'];
+}
 
+const MetaItem: React.FC<{
+  icon: string;
+  label?: string;
+  value?: React.ReactNode;
+  showDot?: boolean;
+  show?: boolean;
+}> = ({ icon, label, value, showDot = true, show = true }) => {
+  if (!show) return null;
   return (
     <>
-      <Title>
-        <Flex gap={8} align="center">
-          <AutoTooltip ghost minWidth={20} maxWidth={180}>
-            {displayName}
-          </AutoTooltip>
-          {acceleratable && manufacturer && (
-            <span
-              style={{
-                color: 'var(--ant-color-text-tertiary)',
-                fontWeight: 400
-              }}
-            >
-              <ThemeTag color="purple">{manufacturer}</ThemeTag>
-            </span>
-          )}
-        </Flex>
-        {showStatus && (
-          <Flex gap={8} align="center">
-            {item.status?.phase && (
-              <StatusTag
-                statusValue={{
-                  status:
-                    InstanceTypePhaseStatus[item.status.phase] ?? 'inactive',
-                  text:
-                    InstanceTypePhaseLabelMap[item.status.phase] ??
-                    item.status.phase,
-                  message: ''
-                }}
-              />
-            )}
-          </Flex>
-        )}
-      </Title>
-      <Meta>
-        <span style={{ display: 'flex', height: 15 }}>
-          {acceleratable && (
-            <span className="meta-row">
-              <span className="meta-item">
-                <IconFont type="icon-gpu1" className="meta-icon" />
-                <Flex align="center" gap={4}>
-                  <span>
-                    {intl.formatMessage({ id: 'gpuservice.instance.memory' })}
-                  </span>
-                  <span>{convertKiToGi(item.spec?.memory) ?? '-'}</span>
-                </Flex>
-              </span>
-              {item.spec?.sliced && (
-                <>
-                  <span className="dot"></span>
-                  <span className="meta-item">
-                    <IconFont type="icon-sliced" className="meta-icon" />
-                    <Flex align="center" gap={4}>
-                      <span>
-                        {intl.formatMessage({
-                          id: 'gpuservice.instance.sliced'
-                        })}
-                      </span>
-                      <span>{item.spec?.sliced ?? '-'}</span>
-                    </Flex>
-                  </span>
-                </>
-              )}
-              {item.status?.accelerator?.remaining && (
-                <>
-                  <span className="dot"></span>
-                  <span className="meta-item">
-                    <IconFont type="icon-cube" className="meta-icon" />
-                    <Flex align="center" gap={4}>
-                      <span>
-                        {intl.formatMessage({
-                          id: 'gpuservice.instance.stock'
-                        })}
-                      </span>
-                      <span>{item.status?.accelerator?.remaining ?? '-'}</span>
-                    </Flex>
-                  </span>
-                </>
-              )}
-            </span>
-          )}
-        </span>
-        <span className="meta-row">
-          <span className="meta-item">
-            <IconFont type="icon-ram-02" className="meta-icon" />
-            <Flex align="center" gap={4}>
-              <span>
-                {intl.formatMessage({ id: 'gpuservice.instance.ram' })}
-              </span>
-              <span>{item.status?.ram?.capacity ?? '-'}</span>
-            </Flex>
-          </span>
-          <span className="dot"></span>
-          <span className="meta-item">
-            <IconFont type="icon-cpu" className="meta-icon" />
-            <Flex align="center" gap={4}>
-              <span>vCPU</span>
-              <span>{item.status?.cpu?.capacity ?? '-'}</span>
-            </Flex>
-          </span>
-        </span>
-      </Meta>
+      {showDot && <span className="dot" />}
+      <IconFont type={icon} className="meta-icon" />
+      <span className="meta-label">{label}</span>
+      <span className="meta-value">{value || '-'}</span>
     </>
+  );
+};
+
+const CPUManufacturerTag: React.FC<{ manufacturer?: string }> = ({
+  manufacturer
+}) => {
+  return (
+    <Tag
+      color="blue"
+      disabled={false}
+      style={{
+        fontWeight: 400,
+        margin: 0,
+        marginLeft: 0,
+        display: 'flex',
+        alignItems: 'center',
+        lineHeight: 1.5
+      }}
+      variant="outlined"
+    >
+      {manufacturer}
+    </Tag>
+  );
+};
+
+function getInstanceDerived(item: InstanceTypeItemModel) {
+  const spec = item.spec || {};
+  const acceleratable = spec.acceleratable;
+
+  const cpuManufacturer = acceleratable
+    ? spec.cpu?.manufacturer
+    : spec.manufacturer;
+
+  return {
+    acceleratable,
+    isGPU: acceleratable,
+    manufacturer: acceleratable ? spec.manufacturer || '' : 'cpu', // GPU manufacturer or 'cpu' for non-acceleratable types
+    displayName: acceleratable ? spec.product || item.name : 'CPU Only',
+    ramUnit: spec.unitResourcesParsed?.ram?.value,
+    os: _.capitalize(spec.os) || '',
+    arch: spec.arch,
+    cpuManufacturer: Vendors.includes(cpuManufacturer as any)
+      ? _.capitalize(cpuManufacturer)
+      : _.toUpper(cpuManufacturer),
+    cpuUnitCores: spec.unitResourcesParsed?.cpu?.cores
+  };
+}
+
+export const InstanceMetadataSection: React.FC<MetadataSectionProps> = ({
+  spec
+}) => {
+  const intl = useIntl();
+
+  const { ramUnit, cpuUnitCores, isGPU, os, arch } = getInstanceDerived({
+    spec
+  } as InstanceTypeItemModel);
+
+  return (
+    <Meta $columns={isGPU ? 11 : 7}>
+      {isGPU && (
+        <>
+          {/* row 1: Memory | Max | RAM */}
+          <MetaItem
+            show={isGPU}
+            showDot={false}
+            icon="icon-gpu1"
+            label={intl.formatMessage({ id: 'gpuservice.instance.memory' })}
+            value={formatMemoryDisplay(spec?.memory ?? undefined) ?? '-'}
+          />
+          <MetaItem
+            showDot={true}
+            icon="icon-ram-02"
+            label={intl.formatMessage({ id: 'gpuservice.instance.ram' })}
+            value={ramUnit ? `${ramUnit} GB` : '-'}
+          />
+          <MetaItem
+            icon="icon-database"
+            label={intl.formatMessage(
+              {
+                id: 'common.max'
+              },
+              { count: '' }
+            )}
+            value={`${spec.maxComputeUnitCount || 0}`}
+          />
+          {/* row 2: OS | Arch | CPU */}
+          <MetaItem
+            showDot={false}
+            icon="icon-server02"
+            label={intl.formatMessage({ id: 'gpuservice.instance.os' })}
+            value={os || '-'}
+          />
+          <MetaItem
+            icon="icon-cube"
+            label={intl.formatMessage({ id: 'gpuservice.instance.arch' })}
+            value={_.toUpper(arch) || '-'}
+          />
+          <MetaItem
+            show={isGPU}
+            showDot={true}
+            icon="icon-cpu"
+            label="CPU"
+            value={
+              <Flex gap={4} align="center">
+                <span>{cpuUnitCores || '-'}</span>
+              </Flex>
+            }
+          />
+        </>
+      )}
+
+      {!isGPU && (
+        <>
+          {/* row 1: RAM | Max */}
+          <MetaItem
+            showDot={false}
+            icon="icon-ram-02"
+            label={intl.formatMessage({ id: 'gpuservice.instance.ram' })}
+            value={ramUnit ? `${ramUnit} GB` : '-'}
+          />
+          <MetaItem
+            icon="icon-database"
+            label={intl.formatMessage(
+              {
+                id: 'common.max'
+              },
+              { count: '' }
+            )}
+            value={`${spec.maxComputeUnitCount || 0}`}
+          />
+          {/* row 2: OS | Arch */}
+          <MetaItem
+            showDot={false}
+            icon="icon-server02"
+            label={intl.formatMessage({ id: 'gpuservice.instance.os' })}
+            value={os || '-'}
+          />
+          <MetaItem
+            icon="icon-cube"
+            label={intl.formatMessage({ id: 'gpuservice.instance.arch' })}
+            value={_.toUpper(arch) || '-'}
+          />
+        </>
+      )}
+    </Meta>
+  );
+};
+
+const InstanceTypeItem: React.FC<InstanceTypeItemProps> = ({ item }) => {
+  const specData = item.spec || {};
+
+  const { acceleratable, manufacturer, displayName, cpuManufacturer } =
+    getInstanceDerived(item);
+
+  const manufacturerColor = manufactureColorMap[manufacturer] ?? 'purple';
+  const showManufacturerTag = acceleratable && !!manufacturer;
+  const showCpuManufacturerTag = !acceleratable && !!cpuManufacturer;
+
+  return (
+    <Flex
+      orientation="vertical"
+      justify="space-between"
+      style={{ height: '100%' }}
+    >
+      <Title>
+        <Flex gap={8} align="center" style={{ width: '100%', minWidth: 0 }}>
+          <div
+            className="instance-type-name"
+            style={{
+              flex: 1,
+              minWidth: 0
+            }}
+          >
+            <AutoTooltip ghost minWidth={20} maxWidth={'100%'}>
+              {displayName || '-'}
+            </AutoTooltip>
+          </div>
+
+          {showManufacturerTag && (
+            <ThemeTag
+              color={manufacturerColor}
+              disabled={false}
+              style={{ fontWeight: 400 }}
+            >
+              {manufacturer?.toUpperCase()}
+            </ThemeTag>
+          )}
+          {showCpuManufacturerTag && (
+            <ThemeTag
+              color={manufacturerColor}
+              disabled={false}
+              style={{ fontWeight: 400 }}
+            >
+              {cpuManufacturer}
+            </ThemeTag>
+          )}
+          <PluginExtraFields
+            name="InstanceTypeBillingBadge"
+            context={{ instanceType: item }}
+          />
+        </Flex>
+      </Title>
+      <InstanceMetadataSection spec={specData}></InstanceMetadataSection>
+    </Flex>
   );
 };
 

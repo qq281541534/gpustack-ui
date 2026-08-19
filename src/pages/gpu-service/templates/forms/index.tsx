@@ -1,4 +1,3 @@
-import { PageAction } from '@/config';
 import { PageActionType } from '@/config/types';
 import { Form } from 'antd';
 import { forwardRef, useEffect, useImperativeHandle } from 'react';
@@ -12,11 +11,12 @@ interface TemplateFormProps {
   action: PageActionType;
   currentData?: ListItem | null;
   onFinish: (values: FormData) => Promise<void>;
+  onFinishFailed?: (errorInfo: any) => void;
 }
 
 const GPUServiceTemplateForm: React.FC<TemplateFormProps> = forwardRef(
   (props, ref) => {
-    const { action, currentData, open, onFinish } = props;
+    const { action, currentData, open, onFinish, onFinishFailed } = props;
     const [form] = Form.useForm<FormData>();
 
     useEffect(() => {
@@ -25,17 +25,20 @@ const GPUServiceTemplateForm: React.FC<TemplateFormProps> = forwardRef(
         return;
       }
 
-      if (action === PageAction.EDIT && currentData) {
+      // Prefill on Edit and on Clone (Create carrying a source row).
+      // A plain Create opens with no ``currentData`` and keeps the
+      // blank ``initialValues``.
+      if (currentData) {
         form.setFieldsValue({
           ...currentData
         });
-        return;
       }
     }, [action, currentData, form, open]);
 
     const handleFinish = async (values: FormData) => {
       await onFinish({
         ...values,
+        displayName: values.displayName?.trim() || values.name,
         spec: {
           ...values.spec,
           command: values.spec?.command?.filter(Boolean) ?? []
@@ -57,7 +60,9 @@ const GPUServiceTemplateForm: React.FC<TemplateFormProps> = forwardRef(
         name="gpuServiceTemplateForm"
         form={form}
         onFinish={handleFinish}
+        onFinishFailed={onFinishFailed}
         preserve={false}
+        scrollToFirstError
         initialValues={{
           spec: {
             imagePullPolicy: DefaultImagePullPolicy,
@@ -65,7 +70,8 @@ const GPUServiceTemplateForm: React.FC<TemplateFormProps> = forwardRef(
             ports: [
               {
                 protocol: 'TCP',
-                port: 22
+                port: 22,
+                name: 'SSH'
               }
             ],
             volumeMount: '/workspace',
@@ -79,7 +85,7 @@ const GPUServiceTemplateForm: React.FC<TemplateFormProps> = forwardRef(
           }
         }}
       >
-        <Basic />
+        <Basic action={action} />
       </Form>
     );
   }

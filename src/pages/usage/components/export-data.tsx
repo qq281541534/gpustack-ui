@@ -5,6 +5,7 @@ import { Table, TableColumnType } from 'antd';
 import React, { useEffect } from 'react';
 import { useUsageFilters } from '../hooks/use-usage-filters';
 import useQueryBreakdownList from '../services/use-query-breakdown-list';
+import { withDeletedMark } from '../utils/deleted-label';
 import getBreakdownRowKey from '../utils/get-breakdown-row-key';
 import FilterBar from './filter-bar';
 
@@ -22,7 +23,7 @@ const ExportData: React.FC<{
   metaData: any;
   granularity: string;
   initialState: {
-    activeModels: ValueType[][];
+    activeRoutes: string[];
     activeApiKeys: ValueType[][];
     users: string[];
     start_date: string;
@@ -32,7 +33,7 @@ const ExportData: React.FC<{
     scope: string;
     start_date: string;
     end_date: string;
-    models: string[];
+    routes: string[];
     users: string[];
     api_keys: string[];
   };
@@ -49,6 +50,15 @@ const ExportData: React.FC<{
     initialState
   } = props || {};
   const intl = useIntl();
+  const deletedWord = intl.formatMessage({ id: 'usage.table.deleted' });
+
+  // Members are forced to self scope, where the backend forbids grouping by
+  // user (privacy) — including it 403s the export request. Drop the user
+  // dimension (and its column) when we can't group by it.
+  const canGroupByUser = initialScope !== 'self';
+  const exportGroupBy = canGroupByUser
+    ? ['date', 'user', 'route', 'api_key']
+    : ['date', 'route', 'api_key'];
 
   const [pageParams, setPageParams] = React.useState<{
     page: number;
@@ -84,7 +94,7 @@ const ExportData: React.FC<{
         ...pageParams,
         granularity: 'day',
         sort_by: '-date',
-        group_by: ['date', 'user', 'model', 'api_key'],
+        group_by: exportGroupBy,
         filters: nextFilters,
         scope: initialScope,
         start_date: nextCommonFilters.start_date,
@@ -113,21 +123,17 @@ const ExportData: React.FC<{
       }
     },
     {
-      title: intl.formatMessage({ id: 'usage.table.cluster' }),
-      dataIndex: ['model', 'identity', 'value', 'cluster_name'],
-      render: (text: string) => {
-        return <AutoTooltip ghost>{text}</AutoTooltip>;
-      }
-    },
-    {
-      title: intl.formatMessage({ id: 'dashboard.usage.export.model' }),
-      dataIndex: ['model', 'identity', 'value', 'model_name'],
+      title: intl.formatMessage({ id: 'usage.filter.group.model' }),
+      dataIndex: ['route', 'label'],
       render: (text: string, record: any) => {
         return (
           <AutoTooltip ghost>
-            {record?.model?.identity?.value?.provider_name
-              ? `${record?.model?.identity?.value?.provider_name}/${text}`
-              : text}
+            {withDeletedMark(
+              text,
+              record?.route?.deleted,
+              deletedWord,
+              record?.route?.identity?.current?.route_id
+            )}
           </AutoTooltip>
         );
       }
@@ -135,15 +141,33 @@ const ExportData: React.FC<{
     {
       title: intl.formatMessage({ id: 'dashboard.usage.export.user' }),
       dataIndex: ['user', 'label'],
-      render: (text: string) => {
-        return <AutoTooltip ghost>{text}</AutoTooltip>;
+      render: (text: string, record: any) => {
+        return (
+          <AutoTooltip ghost>
+            {withDeletedMark(
+              text,
+              record?.user?.deleted,
+              deletedWord,
+              record?.user?.identity?.current?.user_id
+            )}
+          </AutoTooltip>
+        );
       }
     },
     {
       title: intl.formatMessage({ id: 'usage.filter.group.apikey' }),
       dataIndex: ['api_key', 'label'],
       render: (text: string, record: any) => {
-        return <AutoTooltip ghost>{text}</AutoTooltip>;
+        return (
+          <AutoTooltip ghost>
+            {withDeletedMark(
+              text,
+              record?.api_key?.deleted,
+              deletedWord,
+              record?.api_key?.identity?.current?.api_key_id
+            )}
+          </AutoTooltip>
+        );
       }
     },
     {
@@ -205,6 +229,14 @@ const ExportData: React.FC<{
     }
   ];
 
+  // Hide the User column when we can't group by user (self scope) — it'd be
+  // empty otherwise.
+  const visibleColumns = canGroupByUser
+    ? exportTableColumns
+    : exportTableColumns.filter(
+        (c) => !(Array.isArray(c.dataIndex) && c.dataIndex[0] === 'user')
+      );
+
   const handleSubmit = () => {
     exportJsonToExcel({
       fileName: `usage_export_${commonFilters.start_date}_${commonFilters.end_date}.xlsx`,
@@ -212,10 +244,24 @@ const ExportData: React.FC<{
         {
           jsonData: (dataSource.dataList || []).map((item: any) => ({
             date: item?.date?.label,
-            user: item?.user?.label,
-            cluster: item?.model?.identity?.value?.cluster_name,
-            model: item?.model?.identity?.value?.model_name,
-            api_key: item?.api_key?.label,
+            user: withDeletedMark(
+              item?.user?.label ?? '',
+              item?.user?.deleted,
+              deletedWord,
+              item?.user?.identity?.current?.user_id
+            ),
+            route: withDeletedMark(
+              item?.route?.label ?? '',
+              item?.route?.deleted,
+              deletedWord,
+              item?.route?.identity?.current?.route_id
+            ),
+            api_key: withDeletedMark(
+              item?.api_key?.label ?? '',
+              item?.api_key?.deleted,
+              deletedWord,
+              item?.api_key?.identity?.current?.api_key_id
+            ),
             input_tokens: item?.input_tokens,
             input_cached_tokens: item?.input_cached_tokens,
             output_tokens: item?.output_tokens,
@@ -225,8 +271,8 @@ const ExportData: React.FC<{
           sheetName: 'usage',
           fields: [
             'date',
-            'user',
-            'model',
+            ...(canGroupByUser ? ['user'] : []),
+            'route',
             'api_key',
             'input_tokens',
             'input_cached_tokens',
@@ -237,9 +283,8 @@ const ExportData: React.FC<{
           fieldLabels: {
             date: intl.formatMessage({ id: 'dashboard.usage.export.date' }),
             user: intl.formatMessage({ id: 'dashboard.usage.export.user' }),
-            cluster: intl.formatMessage({ id: 'usage.table.cluster' }),
-            model: intl.formatMessage({ id: 'dashboard.usage.export.model' }),
-            api_key: intl.formatMessage({ id: 'usage.table.provider' }),
+            route: intl.formatMessage({ id: 'usage.filter.group.model' }),
+            api_key: intl.formatMessage({ id: 'usage.filter.group.apikey' }),
             input_tokens: intl.formatMessage({
               id: 'usage.filter.inputTokens'
             }),
@@ -267,7 +312,7 @@ const ExportData: React.FC<{
       page,
       perPage: pageSize,
       granularity: 'day',
-      group_by: ['date', 'user', 'model', 'api_key'],
+      group_by: exportGroupBy,
       filters,
       sort_by: '-date',
       scope: initialScope,
@@ -286,7 +331,7 @@ const ExportData: React.FC<{
       fetchExportData({
         ...INITIAL_PAGE_PARAMS,
         granularity: 'day',
-        group_by: ['date', 'user', 'model', 'api_key'],
+        group_by: exportGroupBy,
         filters,
         sort_by: '-date',
         scope: initialScope,
@@ -338,7 +383,7 @@ const ExportData: React.FC<{
         ></FilterBar>
       </div>
       <Table
-        columns={exportTableColumns}
+        columns={visibleColumns}
         className={'scroll-table'}
         tableLayout={'auto'}
         style={{ width: '100%', marginTop: '16px', minHeight: 400 }}
