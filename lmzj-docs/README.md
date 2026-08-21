@@ -4,7 +4,7 @@
 >
 > **Fork 仓库**: https://github.com/qq281541534/gpustack-ui.git  
 > **上游仓库**: https://github.com/gpustack/gpustack-ui.git  
-> **维护方式**: 手动 Sync Fork（方式一）
+> **维护方式**: 受控合并同步（治理规则以后端仓库 `gpustack/AGENTS.md` 为准，本仓库遵循同一链路）
 
 ---
 
@@ -82,49 +82,29 @@ git remote -v
 | 日常维护                    | 建议每周检查一次               |
 | 开始新的二开功能前          | **必须同步**，避免后续大量冲突 |
 
-### 3.2 同步步骤（GitHub Web 界面）
+### 3.2 同步步骤（受控合并，唯一允许的方式）
 
-**步骤 1**: 打开你的 Fork 仓库页面  
-`https://github.com/qq281541534/gpustack-ui`
-
-**步骤 2**: 如果上游有更新，页面会显示提示：
-
-```
-This branch is N commits behind gpustack:main.
-[Sync fork]
-```
-
-**步骤 3**: 点击 **"Sync fork"** → **"Update branch"**
-
-**步骤 4**: 等待同步完成，页面会显示：
-
-```
-This branch is up to date with gpustack:main.
-```
-
-**步骤 5**: 本地拉取更新
+上游同步必须走完整交付链路（先建 GitHub Issue，治理规则以后端仓库 `gpustack/AGENTS.md` 为准）。**禁止使用 GitHub 的 "Sync fork" 按钮**——它会绕过 PR 审查和减功能红线检查，且在 fork 已分叉时提供 "Discard commits" 之类的破坏性选项。
 
 ```bash
-git pull origin main
-```
+# 1. 从最新 dev 创建同步分支
+git switch dev && git pull --ff-only origin dev
+git switch -c sync/upstream-v<version>
 
-### 3.3 同步步骤（命令行方式）
-
-如果习惯用命令行，也可以不通过 Web 界面：
-
-```bash
-# 1. 切换到 main 分支
-git checkout main
-
-# 2. 拉取上游更新
+# 2. 合并上游（保留完整 merge commit，禁止 squash/rebase 同步 PR）
 git fetch upstream
+git merge upstream/main   # 或指定的上游版本 tag
 
-# 3. 合并上游 main 分支到本地 main
-git merge upstream/main
-
-# 4. 推送到自己的 Fork
-git push origin main
+# 3. 解决冲突后先做『减功能/商业化 diff』评估（重点：菜单/入口是否
+#    被禁用或替换为企业版推销页），再推送
+git push -u origin sync/upstream-v<version>
 ```
+
+PR body 使用 `Refs #<issue>` 并附评估报告；合并时必须选择 "Create a merge commit"。
+
+### 3.3 同步频率
+
+按 3.1 的场景表判断；每次同步前先完成减功能红线评估再动手合并。
 
 ---
 
@@ -149,12 +129,11 @@ main (与官方同步，尽量不直接修改)
 ### 4.2 推荐工作流程
 
 ```bash
-# 1. 确保 main 是最新的（已同步上游）
-git checkout main
-git pull origin main
+# 1. 同步本地 dev（定制基线在 dev，不是 main）
+git switch dev && git pull --ff-only origin dev
 
-# 2. 从 main 创建功能分支
-git checkout -b feature/my-custom-feature
+# 2. 从 dev 创建功能分支
+git switch -b feature/my-custom-feature
 
 # 3. 进行二开代码修改...
 # ... coding ...
@@ -163,12 +142,8 @@ git checkout -b feature/my-custom-feature
 git add .
 git commit -m "feat: 自定义功能描述"
 
-# 5. 合并到 dev（或 main，视团队策略而定）
-git checkout dev
-git merge feature/my-custom-feature
-
-# 6. 推送
-git push origin dev
+# 5. 推送功能分支并创建 PR 到 dev（人工审查后合并，不直接 push dev）
+git push -u origin feature/my-custom-feature
 ```
 
 ### 4.3 同步时的冲突处理
@@ -176,7 +151,7 @@ git push origin dev
 如果官方更新和你的二开代码有冲突：
 
 ```bash
-# 1. 同步上游
+# 1. 同步上游（在 3.2 创建的 sync 分支上）
 git fetch upstream
 git merge upstream/main
 
@@ -190,9 +165,18 @@ git add src/pages/dashboard/index.tsx
 # 4. 完成合并
 git commit -m "merge: sync upstream and resolve conflicts"
 
-# 5. 推送
-git push origin main
+# 5. 推送同步分支并创建 PR 到 dev（不要直接 push main/dev）
+git push -u origin sync/upstream-v<version>
 ```
+
+### 4.4 当前 fork 定制清单（同步冲突预判用）
+
+上游每次同步，以下定制点必然出现在 diff 中，逐项确认保留而非丢弃：
+
+- 去品牌化：Footer 置空（`src/components/footer/index.tsx`）、GithubStar/版本按钮不渲染（`src/layouts/extraRender.tsx`）；
+- 去商业化（后端 Issue #24，2026-08-19）：计费/组织菜单及路由移除（`config/routes.ts`）、API Keys 企业版占位符移除（`src/pages/api-keys/hooks/use-keys-columns.tsx`）、 `menu.billingAndUsage` 分组标签去掉「计费」字样（各语言 `menu.ts`）；
+- `src/pages/billing`、`src/pages/organizations` 页面文件保留不删（不被路由引用，不打包，降低同步冲突面）；其语言包 upsell 词条属死文案，待下次 UI 变更时清理；
+- 其他定制：浏览器存储键命名空间化、资产恢复逻辑（见相关提交）。
 
 ---
 
