@@ -1,3 +1,4 @@
+import GpustackLogoReverse from '@/assets/images/brand/lockup-short-reverse.png';
 import GpustackLogo from '@/assets/images/gpustack-logo.png';
 import SmallLogo from '@/assets/images/small-logo-200x200.png';
 import useUserSettings from '@/hooks/use-user-settings';
@@ -11,7 +12,9 @@ const useLogo = () => {
     enterprisePlugin?.branding?.resolveLogos?.(userSettings, isDarkTheme) ?? {};
 
   return {
-    sidebarLogo: resolved.sidebarLogo || GpustackLogo,
+    sidebarLogo:
+      resolved.sidebarLogo ||
+      (isDarkTheme ? GpustackLogoReverse : GpustackLogo),
     miniLogo: resolved.miniLogo || SmallLogo
   };
 };

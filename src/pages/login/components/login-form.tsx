@@ -1,4 +1,5 @@
 import { userAtom } from '@/atoms/user';
+import { useLogo } from '@/hooks/use-logo';
 import { history, useIntl, useModel } from '@umijs/max';
 import { Button, Divider, Form, Spin, message } from 'antd';
 import { createStyles } from 'antd-style';
@@ -95,26 +96,17 @@ const LoginForm = () => {
   const [form] = Form.useForm();
   const [isPassword, setIsPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { sidebarLogo } = useLogo();
 
   const renderWelCome = () => {
     return (
       <div className={styles.welcome}>
         <div className="flex-center">
-          <span className="text">
-            {intl?.formatMessage({ id: 'users.login.title' })}
-          </span>
-          <span
-            style={{
-              fontSize: '24px',
-              fontWeight: 'bold',
-              marginLeft: 10,
-              background: 'linear-gradient(90deg, #1677ff, #722ed1)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent'
-            }}
-          >
-            LLM部署平台
-          </span>
+          <img
+            src={sidebarLogo}
+            alt="logo"
+            style={{ height: 40, width: 'auto' }}
+          />
         </div>
       </div>
     );
